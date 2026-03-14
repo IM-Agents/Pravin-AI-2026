@@ -1,7 +1,9 @@
-const printer = require('printer');
 const { machineIdSync } = require('node-machine-id');
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 class PrinterService {
   constructor(backendUrl) {
@@ -9,6 +11,7 @@ class PrinterService {
     this.machineId = null;
     this.detectedPrinters = [];
     this.lastSyncTime = null;
+    this.platform = process.platform;
   }
 
   async initialize() {
@@ -16,6 +19,7 @@ class PrinterService {
       // Get unique machine ID
       this.machineId = machineIdSync();
       logger.info(`Machine ID: ${this.machineId}`);
+      logger.info(`Platform: ${this.platform}`);
 
       // Initial printer detection
       await this.detectPrinters();
@@ -32,18 +36,28 @@ class PrinterService {
 
   async detectPrinters() {
     try {
-      const printers = printer.getPrinters();
-      
+      let printers = [];
+
+      if (this.platform === 'win32') {
+        printers = await this.detectWindowsPrinters();
+      } else if (this.platform === 'darwin') {
+        printers = await this.detectMacPrinters();
+      } else if (this.platform === 'linux') {
+        printers = await this.detectLinuxPrinters();
+      } else {
+        logger.warn(`Unsupported platform: ${this.platform}`);
+        return [];
+      }
+
       this.detectedPrinters = printers.map(p => ({
         printer_id: p.name,
         printer_name: p.name,
         machine_id: this.machineId,
-        status: this.getPrinterStatus(p),
+        status: p.status || 'online',
         metadata: {
           driver: p.driver || 'Unknown',
           port: p.port || 'Unknown',
-          isDefault: p.isDefault || false,
-          options: p.options || {}
+          isDefault: p.isDefault || false
         }
       }));
 
@@ -55,13 +69,70 @@ class PrinterService {
     }
   }
 
-  getPrinterStatus(printerInfo) {
-    // Check if printer is available/online
-    // This is a simplified check - actual implementation may vary by OS
-    if (printerInfo.status && printerInfo.status.includes('offline')) {
-      return 'offline';
+  async detectWindowsPrinters() {
+    try {
+      const { stdout } = await execPromise('wmic printer get name,status,default /format:csv');
+      const lines = stdout.split('\n').filter(line => line.trim() && !line.startsWith('Node'));
+      
+      return lines.map(line => {
+        const parts = line.split(',');
+        if (parts.length >= 3) {
+          return {
+            name: parts[2] ? parts[2].trim() : 'Unknown',
+            status: parts[3] && parts[3].toLowerCase().includes('ok') ? 'online' : 'offline',
+            isDefault: parts[1] && parts[1].toLowerCase() === 'true'
+          };
+        }
+        return null;
+      }).filter(p => p && p.name !== 'Unknown');
+    } catch (error) {
+      logger.error('Failed to detect Windows printers:', error);
+      return [];
     }
-    return 'online';
+  }
+
+  async detectMacPrinters() {
+    try {
+      const { stdout } = await execPromise('lpstat -p');
+      const lines = stdout.split('\n').filter(line => line.trim());
+      
+      return lines.map(line => {
+        const match = line.match(/printer\s+(\S+)\s+(.+)/);
+        if (match) {
+          return {
+            name: match[1],
+            status: match[2].includes('idle') || match[2].includes('enabled') ? 'online' : 'offline',
+            isDefault: false
+          };
+        }
+        return null;
+      }).filter(p => p);
+    } catch (error) {
+      logger.error('Failed to detect Mac printers:', error);
+      return [];
+    }
+  }
+
+  async detectLinuxPrinters() {
+    try {
+      const { stdout } = await execPromise('lpstat -p');
+      const lines = stdout.split('\n').filter(line => line.trim());
+      
+      return lines.map(line => {
+        const match = line.match(/printer\s+(\S+)\s+(.+)/);
+        if (match) {
+          return {
+            name: match[1],
+            status: match[2].includes('idle') || match[2].includes('enabled') ? 'online' : 'offline',
+            isDefault: false
+          };
+        }
+        return null;
+      }).filter(p => p);
+    } catch (error) {
+      logger.error('Failed to detect Linux printers:', error);
+      return [];
+    }
   }
 
   async syncPrinters() {
@@ -146,4 +217,3 @@ class PrinterService {
 }
 
 module.exports = PrinterService;
-

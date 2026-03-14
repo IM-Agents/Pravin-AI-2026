@@ -2,7 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const printer = require('printer');
+const ptp = require('pdf-to-printer');
 const logger = require('../utils/logger');
 
 class PrintJobService {
@@ -135,21 +135,12 @@ class PrintJobService {
         throw new Error(`Printer ${printerName} not found`);
       }
 
-      // Print using node-printer
-      await new Promise((resolve, reject) => {
-        printer.printFile({
-          filename: pdfPath,
-          printer: printerName,
-          success: (jobId) => {
-            logger.info(`Print job sent successfully. System job ID: ${jobId}`);
-            resolve(jobId);
-          },
-          error: (err) => {
-            logger.error('Print error:', err);
-            reject(new Error(`Print failed: ${err}`));
-          }
-        });
-      });
+      // Print using pdf-to-printer
+      const options = {
+        printer: printerName
+      };
+
+      await ptp.print(pdfPath, options);
 
       logger.info(`PDF printed successfully to ${printerName}`);
     } catch (error) {
@@ -211,4 +202,3 @@ class PrintJobService {
 }
 
 module.exports = PrintJobService;
-

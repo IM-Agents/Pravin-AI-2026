@@ -16,10 +16,27 @@ This desktop application runs on client machines to:
 - **Electron**: 27.0.0 - Desktop application framework
 - **Node.js**: 18.16.1+
 - **axios**: 1.5.0 - HTTP client for API communication
-- **printer**: 0.4.0 - Node.js printer detection and control
+- **pdf-to-printer**: 5.6.0 - Cross-platform PDF printing
 - **electron-store**: 8.1.0 - Persistent data storage
 - **node-machine-id**: 1.1.12 - Unique machine identifier
+- **dotenv**: 16.3.1 - Environment variable management
 - **electron-builder**: 24.6.4 - Build and packaging tool
+
+## Important Notes
+
+### Printer Detection
+This app uses **native OS commands** for printer detection instead of the unreliable `printer` npm module:
+- **Windows**: Uses `wmic printer` command
+- **macOS**: Uses `lpstat -p` command  
+- **Linux**: Uses `lpstat -p` command (requires CUPS)
+
+This approach is more reliable and works across all platforms without native module compilation issues.
+
+### PDF Printing
+Uses `pdf-to-printer` module which is actively maintained and supports:
+- Windows (via SumatraPDF or default PDF viewer)
+- macOS (via lp command)
+- Linux (via lp command with CUPS)
 
 ## Project Structure
 
@@ -333,4 +350,3 @@ The machine ID is generated using `node-machine-id` and is unique per machine. I
 ## License
 
 Proprietary - Order Management Automation System
-

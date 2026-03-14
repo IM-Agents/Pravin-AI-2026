@@ -17,16 +17,24 @@ const PRINTER_SYNC_INTERVAL = parseInt(process.env.PRINTER_SYNC_INTERVAL) || 300
 const PRINT_JOB_POLL_INTERVAL = parseInt(process.env.PRINT_JOB_POLL_INTERVAL) || 5000; // 5 seconds
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const windowOptions = {
     width: 800,
     height: 600,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     },
-    icon: path.join(__dirname, '../assets/icon.png'),
     show: false // Start hidden
-  });
+  };
+
+  // Only set icon if file exists
+  const iconPath = path.join(__dirname, '../assets/icon.png');
+  const fs = require('fs');
+  if (fs.existsSync(iconPath)) {
+    windowOptions.icon = iconPath;
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
 
@@ -45,6 +53,14 @@ function createWindow() {
 
 function createTray() {
   const iconPath = path.join(__dirname, '../assets/icon.png');
+  const fs = require('fs');
+  
+  // Skip tray creation if icon doesn't exist
+  if (!fs.existsSync(iconPath)) {
+    logger.warn('Tray icon not found, skipping tray creation');
+    return;
+  }
+  
   tray = new Tray(iconPath);
 
   const contextMenu = Menu.buildFromTemplate([
@@ -176,4 +192,3 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (error) => {
   logger.error('Unhandled rejection:', error);
 });
-
