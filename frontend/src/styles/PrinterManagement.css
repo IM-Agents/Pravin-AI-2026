@@ -1,0 +1,157 @@
+.printer-management-page {
+  background-color: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.printers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.printer-card {
+  background-color: #f8f9fa;
+  border: 2px solid #ecf0f1;
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.printer-card:hover {
+  border-color: #3498db;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.printer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.printer-header h3 {
+  color: #2c3e50;
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.status-indicator {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-indicator.online {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-indicator.offline {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.printer-details {
+  margin-bottom: 1.5rem;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.detail-row .label {
+  color: #7f8c8d;
+  font-weight: 500;
+}
+
+.detail-row .value {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.printer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.assign-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assign-section label {
+  color: #2c3e50;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.assign-section select {
+  padding: 0.75rem;
+  border: 2px solid #ecf0f1;
+  border-radius: 4px;
+  font-size: 1rem;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.3s ease;
+}
+
+.assign-section select:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.toggle-active-button {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.toggle-active-button.active {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.toggle-active-button.active:hover {
+  background-color: #c0392b;
+}
+
+.toggle-active-button.inactive {
+  background-color: #27ae60;
+  color: white;
+}
+
+.toggle-active-button.inactive:hover {
+  background-color: #229954;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+}
+
+.empty-state p {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state .hint {
+  color: #95a5a6;
+  font-size: 0.95rem;
+}
+
