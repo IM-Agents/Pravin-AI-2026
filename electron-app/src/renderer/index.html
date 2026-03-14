@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OMA Printer Service</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🖨️ OMA Printer Service</h1>
+      <p class="subtitle">Order Management Automation - Desktop App</p>
+    </header>
+
+    <main>
+      <section class="status-section">
+        <h2>Service Status</h2>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">Service:</span>
+            <span class="status-value" id="service-status">Running</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Machine ID:</span>
+            <span class="status-value" id="machine-id">Loading...</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Last Sync:</span>
+            <span class="status-value" id="last-sync">Never</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Printers Detected:</span>
+            <span class="status-value" id="printer-count">0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="printers-section">
+        <div class="section-header">
+          <h2>Detected Printers</h2>
+          <button id="sync-btn" class="btn btn-primary">🔄 Sync Now</button>
+        </div>
+        <div id="printers-list" class="printers-list">
+          <p class="loading">Loading printers...</p>
+        </div>
+      </section>
+
+      <section class="logs-section">
+        <div class="section-header">
+          <h2>Recent Logs</h2>
+          <button id="refresh-logs-btn" class="btn btn-secondary">🔄 Refresh</button>
+        </div>
+        <div id="logs-container" class="logs-container">
+          <p class="loading">Loading logs...</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>OMA Printer Service v1.0 - Running in background</p>
+      <p class="hint">You can close this window - the service will continue running in the system tray</p>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
+
