@@ -9,11 +9,11 @@ OMA automates the complete lifecycle of Shopify orders — from webhook ingestio
 | Layer | Technology | Version |
 |-------|-----------|---------|
 | **Frontend** | React | 18.x |
-| **Backend** | Node.js + Express.js | 24.13.1 |
+| **Backend** | Node.js + Express.js | 20.x+ |
 | **Desktop App** | Electron | Latest |
 | **Database** | MySQL | 8.0 |
 | **Real-time Communication** | Socket.IO (WebSocket) | Latest |
-| **PDF Generation** | PDFKit / Puppeteer (Node) | Latest |
+| **PDF Generation** | PDFKit | Latest |
 | **Webhook Security** | Shopify HMAC-SHA256 | — |
 
 ## Architecture
@@ -30,6 +30,84 @@ Shopify (Webhooks: orders/create, orders/cancelled)
    Electron Desktop App
         ↓
    Local Printers (per department)
+```
+
+## Project Structure
+
+```
+oma/
+├── frontend/                    # React 18 app
+│   ├── src/
+│   │   ├── components/          # Reusable UI components
+│   │   │   ├── OrderTable/      # Order list table with pagination
+│   │   │   ├── DepartmentButton/# Status buttons for each department
+│   │   │   ├── Timeline/        # Order event timeline modal
+│   │   │   ├── Filters/         # Search and filter controls
+│   │   │   ├── IgnoreButton/    # Ignore/unignore order toggle
+│   │   │   ├── PrinterSettings/ # Printer configuration UI
+│   │   │   └── Layout/          # App layout with sidebar
+│   │   ├── pages/
+│   │   │   ├── OrderManagement/ # Main orders page with tabs
+│   │   │   └── Settings/        # Printer settings page
+│   │   ├── services/
+│   │   │   ├── api.js           # Axios API client
+│   │   │   └── socket.js        # Socket.IO client
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── styles/              # Global CSS styles
+│   │   └── App.jsx              # Root component
+│   ├── index.html
+│   ├── vite.config.js
+│   └── package.json
+│
+├── backend/                     # Node.js + Express
+│   ├── src/
+│   │   ├── controllers/         # Request handlers
+│   │   │   ├── webhookController.js
+│   │   │   ├── orderController.js
+│   │   │   ├── printerController.js
+│   │   │   └── printJobController.js
+│   │   ├── services/            # Business logic
+│   │   │   ├── ruleEngine.js    # Order rule evaluation
+│   │   │   ├── pdfGenerator.js  # KOT PDF generation
+│   │   │   ├── printService.js  # Print job orchestration
+│   │   │   └── timelineService.js # Event logging
+│   │   ├── models/              # Database models
+│   │   ├── routes/              # API route definitions
+│   │   ├── middleware/          # Express middleware
+│   │   │   ├── shopifyAuth.js   # HMAC validation
+│   │   │   └── errorHandler.js  # Error handling
+│   │   ├── config/              # Configuration
+│   │   │   ├── db.js            # MySQL connection
+│   │   │   ├── env.js           # Environment variables
+│   │   │   └── socket.js        # Socket.IO setup
+│   │   ├── socket/              # WebSocket handlers
+│   │   ├── migrations/          # Database migrations
+│   │   ├── app.js               # Express app setup
+│   │   └── server.js            # Server entry point
+│   ├── generated-pdfs/          # PDF storage directory
+│   ├── .env.example
+│   └── package.json
+│
+├── desktop/                     # Electron app
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── main.js          # Electron main process
+│   │   │   ├── printerManager.js# Printer detection
+│   │   │   ├── printExecutor.js # Print job execution
+│   │   │   ├── socketClient.js  # Backend connection
+│   │   │   └── config.js        # Configuration
+│   │   ├── renderer/            # UI for status display
+│   │   │   ├── index.html
+│   │   │   └── renderer.js
+│   │   └── preload.js           # IPC bridge
+│   └── package.json
+│
+├── api-endpoints.md             # API documentation
+├── backend-spec.md              # Backend specification
+├── database-schema.md           # Database schema
+├── electron-spec.md             # Electron app specification
+├── frontend-spec.md             # Frontend specification
+└── README.md
 ```
 
 ## Departments
@@ -58,7 +136,7 @@ Each department has:
 
 ### KOT PDF Generation
 - Per-department PDF generation with 3 template variants
-- Content: Order details, product info (image, name, variant, qty, price), delivery info, customer info, shipping address, notes
+- Content: Order details, product info, delivery info, customer info, shipping address, notes
 - Badge system: Standard (no badge), REPRINT, REPRINT-CANCELLATION
 
 ### Printing
@@ -90,7 +168,7 @@ Each department has:
 | Status | Meaning | Color | Button Behavior |
 |--------|---------|-------|-----------------|
 | NA | Print not required | Grey | Disabled |
-| PENDING | Print not issued (awaiting manual trigger or rule resolution) | Orange | Print (manual trigger) |
+| PENDING | Print not issued | Orange | Print (manual trigger) |
 | IN-PROGRESS | Currently printing | Blue | Disabled + Loader |
 | SUCCESS | Printed successfully | Green | Download PDF |
 | FAILED | Error occurred | Red | Retry + Download |
@@ -99,128 +177,247 @@ Each department has:
 
 | Condition | Behavior |
 |-----------|----------|
-| Super Extended Delivery | All departments → PENDING |
-| Additional Customization Charges | All departments → PENDING |
-| Missing Delivery Info | All departments → PENDING |
-| Draft Orders | All departments → PENDING |
+| Super Extended Delivery | All departments → PENDING (manual) |
+| Additional Customization Charges | All departments → PENDING (manual) |
+| Missing Delivery Info | All departments → PENDING (manual) |
+| Draft Orders | All departments → PENDING (manual) |
 | Designer Cake | DM + Confectionery only (Design = NA) |
-| Default | All departments required |
-| Order Cancelled | Cancel in-progress jobs, update status, log timeline |
+| Default | All departments → auto-print |
+| Order Cancelled | Cancel in-progress jobs, update status |
 
-## Development Workflow
+---
 
-| Item | Value |
-|------|-------|
-| Base Branch | `main` |
-| Frontend Branch | `order_man_react` |
-| Backend Branch | `order_man_node` |
-| Desktop Branch | `order_man_desktop` |
-| Push Strategy | Direct push (no PR required for current phase) |
-
-## Project Structure
-
-```
-oma/
-├── frontend/                    # React 18 app
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── OrderTable/
-│   │   │   ├── DepartmentButton/
-│   │   │   ├── Timeline/
-│   │   │   ├── Filters/
-│   │   │   ├── IgnoreButton/
-│   │   │   └── PrinterSettings/
-│   │   ├── pages/
-│   │   │   ├── ActionRequired/
-│   │   │   ├── AllOrders/
-│   │   │   └── Settings/
-│   │   ├── services/
-│   │   │   ├── api.js
-│   │   │   └── socket.js
-│   │   ├── hooks/
-│   │   ├── utils/
-│   │   └── App.js
-│   └── package.json
-│
-├── backend/                     # Node.js + Express
-│   ├── src/
-│   │   ├── controllers/
-│   │   │   ├── webhookController.js
-│   │   │   ├── orderController.js
-│   │   │   ├── printerController.js
-│   │   │   └── printJobController.js
-│   │   ├── services/
-│   │   │   ├── ruleEngine.js
-│   │   │   ├── pdfGenerator.js
-│   │   │   ├── printService.js
-│   │   │   └── timelineService.js
-│   │   ├── models/
-│   │   ├── routes/
-│   │   ├── middleware/
-│   │   │   └── shopifyAuth.js
-│   │   ├── config/
-│   │   ├── socket/
-│   │   │   └── socketHandler.js
-│   │   └── app.js
-│   ├── migrations/
-│   ├── pdf-templates/
-│   └── package.json
-│
-├── desktop/                     # Electron app
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── printerManager.js
-│   │   │   ├── printExecutor.js
-│   │   │   └── socketClient.js
-│   │   └── preload.js
-│   └── package.json
-│
-└── README.md
-```
-
-## Getting Started
+## Setup Instructions
 
 ### Prerequisites
-- Node.js 24.13.1
+- Node.js 20.x or higher
 - MySQL 8.0
-- npm / yarn
+- npm or yarn
 
-### Backend Setup
+### 1. Database Setup
+
+```bash
+# Create MySQL database
+mysql -u root -p
+CREATE DATABASE oma;
+exit;
+```
+
+### 2. Backend Setup
+
 ```bash
 cd backend
+
+# Install dependencies
 npm install
-# Configure .env (DB credentials, Shopify webhook secret, etc.)
+
+# Create environment file
+cp .env.example .env
+
+# Edit .env with your configuration
+# (see Environment Variables section below)
+
+# Run database migrations
 npm run migrate
+
+# Start development server
 npm run dev
 ```
 
-### Frontend Setup
+### 3. Frontend Setup
+
 ```bash
 cd frontend
-npm install
-npm start
-```
 
-### Electron Setup
-```bash
-cd desktop
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
 ```
+
+### 4. Electron Desktop App Setup
+
+```bash
+cd desktop
+
+# Install dependencies
+npm install
+
+# Start development mode
+npm run dev
+```
+
+---
 
 ## Environment Variables
 
 ### Backend `.env`
-```
+
+```env
+# Server
 PORT=8000
+NODE_ENV=development
+
+# Database
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=
+DB_PASSWORD=your_password
 DB_NAME=oma
+
+# Shopify
 SHOPIFY_WEBHOOK_SECRET=your_shopify_webhook_secret
+
+# PDF
 PDF_STORAGE_PATH=./generated-pdfs
+
+# Socket.IO
+SOCKET_CORS_ORIGIN=http://localhost:3000
 ```
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PORT` | Backend server port | No | 8000 |
+| `NODE_ENV` | Environment mode | No | development |
+| `DB_HOST` | MySQL host | Yes | localhost |
+| `DB_PORT` | MySQL port | No | 3306 |
+| `DB_USER` | MySQL username | Yes | root |
+| `DB_PASSWORD` | MySQL password | Yes | - |
+| `DB_NAME` | MySQL database name | Yes | oma |
+| `SHOPIFY_WEBHOOK_SECRET` | Shopify HMAC secret | Yes* | - |
+| `PDF_STORAGE_PATH` | PDF storage directory | No | ./generated-pdfs |
+| `SOCKET_CORS_ORIGIN` | Frontend URL for CORS | No | http://localhost:3000 |
+
+*Required for production webhook validation
+
+### Desktop App Environment
+
+```env
+OMA_BACKEND_URL=http://localhost:8000
+```
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `OMA_BACKEND_URL` | Backend server URL | No | http://localhost:8000 |
+
+---
+
+## Running the System
+
+### Development Mode
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+npm run dev
+# Server runs on http://localhost:8000
+```
+
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+# App runs on http://localhost:3000
+```
+
+**Terminal 3 - Desktop App:**
+```bash
+cd desktop
+npm run dev
+# Electron app launches
+```
+
+### Production Build
+
+**Backend:**
+```bash
+cd backend
+npm start
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run build
+npm run preview
+# Or serve the dist/ folder with any static server
+```
+
+**Desktop App:**
+```bash
+cd desktop
+
+# Build for current platform
+npm run build
+
+# Build for specific platforms
+npm run build:win    # Windows
+npm run build:mac    # macOS
+npm run build:linux  # Linux
+
+# Output in desktop/dist/
+```
+
+---
+
+## API Endpoints Summary
+
+### Webhooks
+- `POST /api/webhooks/shopify/orders/create` - New order webhook
+- `POST /api/webhooks/shopify/orders/cancelled` - Order cancellation webhook
+
+### Orders
+- `GET /api/orders` - Get all orders (paginated)
+- `GET /api/orders/action-required` - Get orders needing attention
+- `GET /api/orders/:order_id` - Get order details
+- `PATCH /api/orders/:order_id/ignore` - Toggle ignore status
+- `GET /api/orders/:order_id/timeline` - Get order timeline
+
+### Department Printing
+- `POST /api/orders/:order_id/departments/:department/print` - Trigger print
+- `POST /api/orders/:order_id/departments/:department/retry` - Retry failed print
+- `GET /api/orders/:order_id/departments/:department/download-pdf` - Download PDF
+
+### Printers
+- `GET /api/printers` - Get all printers
+- `POST /api/printers/sync` - Sync printers from Electron
+- `POST /api/printers/status` - Update printer status
+- `PATCH /api/printers/:printer_id/assign` - Assign to department
+- `PATCH /api/printers/:printer_id/active` - Toggle active status
+
+---
+
+## WebSocket Events
+
+### Backend → Frontend
+- `order_status_update` - Department status changed
+- `new_order` - New order received
+- `order_cancelled` - Order was cancelled
+- `printers_updated` - Printer list changed
+
+### Backend → Electron
+- `print_job` - New print job to execute
+- `cancel_job` - Cancel in-progress job
+
+### Electron → Backend
+- `printer_sync` - Printer list from Electron
+- `printer_status` - Printer online/offline update
+- `print_status_update` - Print job result
+
+---
+
+## Testing Webhooks Locally
+
+Use a tool like ngrok to expose your local backend:
+
+```bash
+ngrok http 8000
+```
+
+Configure the ngrok URL in your Shopify webhook settings.
+
+---
 
 ## License
 
