@@ -1,0 +1,38 @@
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.todo-list-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+
+.todo-list-empty p {
+  font-size: 1.125rem;
+  margin: 0;
+}
+
+.todo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding-left: 0.25rem;
+}
+
+.todo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
