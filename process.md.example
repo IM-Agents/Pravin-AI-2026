@@ -1,0 +1,28 @@
+# Branch process metadata
+
+Copy this file to **`process.md`** on your branch and fill in the values, **or** commit **`process.md.example`** with real `clickup_task` / `branch` values. The workflow reads **`process.md`** first, then **`process.md.example`**.
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `branch` | Optional | Should match the Git PR head branch. If it does not match, the workflow logs a warning. |
+| `clickup_task` | Yes (for ClickUp comments) | Full ClickUp task URL, or the raw task id. |
+
+Example (replace with your real branch and task):
+
+```text
+base_branch: main
+branch: cursor_new_oma_req
+clickup_task: https://app.clickup.com/t/86d2hj96n
+```
+
+Raw task id only is also accepted:
+
+```text
+base_branch: main
+branch: cursor_new_oma_req
+clickup_task: 86d2hj96n
+```
+
+Lines must start with the key (optional leading spaces). Use `key: value` on a single line. Inline `#` comments on the same line are stripped.
+
+**Resolution order:** the workflow reads **`process.md`** first, then **`process.md.example`** if the first file is missing or has no `clickup_task`. It does **not** use the PR description, commit links, or repository secrets for the task or branch. The ClickUp comment includes the **task link** and **branch** from whichever file supplied `clickup_task` (not a PR or commit URL).
