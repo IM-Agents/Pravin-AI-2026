@@ -11,13 +11,13 @@ function OrderManagement() {
   
   const currentData = activeTab === 'action-required' ? actionRequired : allOrders;
 
-  const handleOrderUpdate = useCallback((orderId, updates) => {
+  const handleOrderUpdate = useCallback(() => {
     if (activeTab === 'action-required') {
       actionRequired.refresh();
     } else {
       allOrders.refresh();
     }
-  }, [activeTab, actionRequired, allOrders]);
+  }, [activeTab, actionRequired.refresh, allOrders.refresh]);
 
   return (
     <div>
