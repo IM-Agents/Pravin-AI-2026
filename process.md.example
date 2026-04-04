@@ -4,15 +4,17 @@ Copy this file to **`process.md`** on your branch and fill in the values, **or**
 
 | Key | Required | Description |
 |-----|----------|-------------|
-| `branch` | Optional | Should match the Git PR head branch. If it does not match, the workflow logs a warning. |
+| `branch` | **Yes** (when `clickup_task` is set) | Must match the Git **PR head branch** exactly. The ClickUp comment and automation use this value; the workflow **fails** if it is missing or does not match the PR branch. For OMA work on the feature line, use **`cursor_new_oma_req`**. |
 | `clickup_task` | Yes (for ClickUp comments) | Full ClickUp task URL, or the raw task id. |
 
-Example (replace with your real branch and task):
+**Convention for this repo:** set **`branch: cursor_new_oma_req`** when your PR head is **`cursor_new_oma_req`**, so ClickUp always shows the correct branch and commits from the CodeRabbit auto-fix workflow are pushed to that same branch (the PR head).
+
+Example (replace `clickup_task` with your real task):
 
 ```text
 base_branch: main
 branch: cursor_new_oma_req
-clickup_task: https://app.clickup.com/t/86d2hj96n
+clickup_task: https://app.clickup.com/t/86d2hrt56
 ```
 
 Raw task id only is also accepted:
@@ -20,9 +22,11 @@ Raw task id only is also accepted:
 ```text
 base_branch: main
 branch: cursor_new_oma_req
-clickup_task: 86d2hj96n
+clickup_task: 86d2hrt56
 ```
 
 Lines must start with the key (optional leading spaces). Use `key: value` on a single line. Inline `#` comments on the same line are stripped.
 
-**Resolution order:** the workflow reads **`process.md`** first, then **`process.md.example`** if the first file is missing or has no `clickup_task`. It does **not** use the PR description, commit links, or repository secrets for the task or branch. The ClickUp comment includes the **task link** and **branch** from whichever file supplied `clickup_task` (not a PR or commit URL).
+**Resolution order:** the workflow reads **`process.md`** first, then **`process.md.example`** if the first file is missing or has no `clickup_task`. It does **not** use the PR description, commit links, or repository secrets for the task or branch.
+
+**ClickUp comment:** includes the **task link** and the **`branch`** value from the file that supplied `clickup_task` (not a PR or commit URL). **`git push`** targets the PR head branch, which must be the same as **`branch`** or the job fails.

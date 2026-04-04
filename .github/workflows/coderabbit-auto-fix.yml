@@ -58,6 +58,80 @@ jobs:
             exit 0
           fi
 
+      - name: Resolve ClickUp task and validate branch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          TASK_ID=""
+          PROC_BRANCH=""
+          PROC_TASK_URL=""
+
+          proc_get() {
+            local key="$1"
+            local file="$2"
+            local line
+            line=$(grep -E "^[[:space:]]*${key}:[[:space:]]*" "$file" | head -1 || true)
+            [ -z "$line" ] && return 0
+            echo "$line" | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
+          }
+
+          id_from_clickup_string() {
+            local s="$1"
+            local id
+            id=$(echo "$s" | grep -oEi '/t/[a-z0-9]+' | tail -1 | sed 's|^/t/||' || true)
+            if [ -z "$id" ]; then
+              id=$(echo "$s" | grep -oEi 'clickup\.com/t/[a-z0-9]+' | head -1 | sed 's|.*/t/||' || true)
+            fi
+            echo "$id"
+          }
+
+          for PROC_FILE in process.md process.md.example; do
+            [ -f "$PROC_FILE" ] || continue
+            echo "Parsing $PROC_FILE for clickup_task and branch."
+            PROC_BRANCH=$(proc_get branch "$PROC_FILE" || true)
+            PROC_TASK_RAW=$(proc_get clickup_task "$PROC_FILE" || true)
+            if [ -z "$PROC_TASK_RAW" ]; then
+              continue
+            fi
+            if echo "$PROC_TASK_RAW" | grep -qi 'clickup\.com'; then
+              TASK_ID=$(id_from_clickup_string "$PROC_TASK_RAW")
+              PROC_TASK_URL=$(echo "$PROC_TASK_RAW" | tr -d '\r' | sed 's/[[:space:]]*$//')
+            else
+              CLEAN=$(echo "$PROC_TASK_RAW" | tr -d '\r')
+              if echo "$CLEAN" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+                TASK_ID="$CLEAN"
+                PROC_TASK_URL="https://app.clickup.com/t/${TASK_ID}"
+              fi
+            fi
+            if [ -n "$TASK_ID" ]; then
+              echo "ClickUp task id from $PROC_FILE: $TASK_ID"
+              break
+            fi
+          done
+
+          if [ -z "$TASK_ID" ]; then
+            echo "No clickup_task in process.md or process.md.example; skipping ClickUp validation and comments."
+          else
+            if [ -z "$PROC_BRANCH" ]; then
+              echo "::error::When clickup_task is set, branch must be set in process.md or process.md.example (e.g. branch: cursor_new_oma_req) and must match the PR head branch."
+              exit 1
+            fi
+            if [ "$PROC_BRANCH" != "$HEAD_REF" ]; then
+              echo "::error::branch in process file ('$PROC_BRANCH') must match PR head ref ('$HEAD_REF'). Update process.md or use a PR from the correct branch."
+              exit 1
+            fi
+            echo "Branch validated: process branch matches PR head ($HEAD_REF)."
+          fi
+
+          echo "TASK_ID=$TASK_ID" >> $GITHUB_ENV
+          {
+            echo "PROC_TASK_URL<<__PROC_EOF__"
+            echo "${PROC_TASK_URL:-}"
+            echo "__PROC_EOF__"
+          } >> $GITHUB_ENV
+          echo "PROC_BRANCH=$PROC_BRANCH" >> $GITHUB_ENV
+          echo "Final ClickUp task id: ${TASK_ID:-<empty>}"
+
       # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
       - name: Send suggestion to Cursor AI
         env:
@@ -88,6 +162,8 @@ jobs:
           echo "$RESP"
 
       - name: Commit fixes if AI modified files
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "ai-bot"
           git config user.email "ai@bot.com"
@@ -98,76 +174,8 @@ jobs:
             echo "No code changes detected."
           else
             git commit -m "fix: apply CodeRabbit suggestion"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git push origin "HEAD:${PR_HEAD_REF}"
           fi
-
-      - name: Extract ClickUp task ID
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          TASK_ID=""
-          PROC_BRANCH=""
-          PROC_TASK_URL=""
-
-          proc_get() {
-            local key="$1"
-            local file="$2"
-            local line
-            line=$(grep -E "^[[:space:]]*${key}:[[:space:]]*" "$file" | head -1 || true)
-            [ -z "$line" ] && return 0
-            echo "$line" | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
-          }
-
-          id_from_clickup_string() {
-            local s="$1"
-            local id
-            id=$(echo "$s" | grep -oEi '/t/[a-z0-9]+' | tail -1 | sed 's|^/t/||' || true)
-            if [ -z "$id" ]; then
-              id=$(echo "$s" | grep -oEi 'clickup\.com/t/[a-z0-9]+' | head -1 | sed 's|.*/t/||' || true)
-            fi
-            echo "$id"
-          }
-
-          # Task link and branch come only from process.md or process.md.example (no PR text, no secrets).
-          for PROC_FILE in process.md process.md.example; do
-            [ -f "$PROC_FILE" ] || continue
-            echo "Parsing $PROC_FILE for clickup_task and branch."
-            PROC_BRANCH=$(proc_get branch "$PROC_FILE" || true)
-            PROC_TASK_RAW=$(proc_get clickup_task "$PROC_FILE" || true)
-            if [ -n "$PROC_BRANCH" ] && [ "$PROC_BRANCH" != "$HEAD_REF" ]; then
-              echo "::warning::$PROC_FILE branch '$PROC_BRANCH' does not match PR head ref '$HEAD_REF'"
-            fi
-            if [ -z "$PROC_TASK_RAW" ]; then
-              continue
-            fi
-            if echo "$PROC_TASK_RAW" | grep -qi 'clickup\.com'; then
-              TASK_ID=$(id_from_clickup_string "$PROC_TASK_RAW")
-              PROC_TASK_URL=$(echo "$PROC_TASK_RAW" | tr -d '\r' | sed 's/[[:space:]]*$//')
-            else
-              CLEAN=$(echo "$PROC_TASK_RAW" | tr -d '\r')
-              if echo "$CLEAN" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-                TASK_ID="$CLEAN"
-                PROC_TASK_URL="https://app.clickup.com/t/${TASK_ID}"
-              fi
-            fi
-            if [ -n "$TASK_ID" ]; then
-              echo "ClickUp task id from $PROC_FILE: $TASK_ID"
-              break
-            fi
-          done
-
-          if [ -z "$TASK_ID" ]; then
-            echo "No clickup_task found in process.md or process.md.example; skipping ClickUp comment."
-          fi
-
-          echo "TASK_ID=$TASK_ID" >> $GITHUB_ENV
-          {
-            echo "PROC_TASK_URL<<__PROC_EOF__"
-            echo "${PROC_TASK_URL:-}"
-            echo "__PROC_EOF__"
-          } >> $GITHUB_ENV
-          echo "PROC_BRANCH=$PROC_BRANCH" >> $GITHUB_ENV
-          echo "Final ClickUp task id: ${TASK_ID:-<empty>}"
 
       - name: Post CodeRabbit suggestion to ClickUp
         if: env.TASK_ID != ''
