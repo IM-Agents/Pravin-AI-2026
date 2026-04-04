@@ -1,0 +1,37 @@
+---
+description: Figma @ links, DB-specific SQL, pinned deps, branch/PR workflow, and model routing (Sonnet vs Opus)
+alwaysApply: true
+---
+
+# Workflow — mentions, SQL, versions, branches, agents
+
+## Figma
+
+- When the user **@ mentions a Figma link, file, or component**, treat it as the source of truth for that UI work.
+- Prefer the **Figma MCP** (`get_design_context`, `get_screenshot`, `get_metadata` as appropriate) when a `figma.com` URL or file/node identifiers are available.
+- Map generated output to this repo’s stack and existing components; do not treat MCP output as drop-in final code.
+
+## SQL
+
+- Use **syntax and features that match the database version the user @ mentions** (e.g. MySQL 8 vs PostgreSQL 15).
+- If no version is given, default to **MySQL 8.0** for this project (see `database-schema.md`).
+- Avoid dialect mix-ups: reserved words, `JSON` handling, `LIMIT`/`OFFSET`, identifiers, and date functions must match that engine.
+
+## Packages and libraries
+
+- When the user **@ mentions a package, library, or version**, use **that exact name and version** in installs, imports, and docs (e.g. `package.json`, lockfile alignment, compatibility notes).
+- If versions conflict with the repo, call it out and propose a minimal, explicit resolution.
+
+## Git: branch and PRs
+
+- Use the **branch name the user @ mentions** for new work (create/checkout as needed).
+- After a **push**, treat **opening a PR** as part of the workflow: suggest or draft **PR title and description**, target branch (ask or infer from repo default), and the exact **GitHub/GitLab CLI or web** steps unless the user forbids automation.
+- Repeat this expectation **per push** when they ask for release-style workflow.
+
+## Agents / models
+
+- Honor **@ mentioned agents or models** when the user specifies them.
+- **Default routing** when the user does not specify a model:
+  - **Figma → HTML/CSS (or equivalent static frontend markup/styles)** → use **Sonnet 4.5**.
+  - **All other feature-related code** (API, DB, Electron, business logic, refactors outside pure Figma markup) → use **Opus 4.5**.
+- If only one model is available in the UI, state that limitation and follow the same priorities in how you scope and structure the answer.
