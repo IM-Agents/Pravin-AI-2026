@@ -7,9 +7,9 @@
 
 ## Branch Information
 
-**base_branch**: main  
-**branch**: cursor_new_oma_req  
-**clickup_task**: 86d2hrt56
+base_branch: main  
+branch: cursor_new_oma_req  
+clickup_task: 86d2hrt56
 
 ## Task Objective
 
