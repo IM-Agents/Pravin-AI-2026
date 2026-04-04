@@ -46,13 +46,13 @@ function OrderManagement() {
       />
 
       {currentData.error && (
-        <div style={{ color: 'red', marginBottom: '16px' }}>
+        <div className="error-message">
           Error: {currentData.error}
         </div>
       )}
 
       {currentData.loading ? (
-        <div style={{ textAlign: 'center', padding: '40px' }}>
+        <div className="loading-state">
           Loading orders...
         </div>
       ) : (

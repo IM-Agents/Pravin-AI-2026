@@ -643,6 +643,16 @@ body {
   color: var(--color-failed);
 }
 
+.error-message {
+  color: red;
+  margin-bottom: 16px;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px;
+}
+
 @media (max-width: 1024px) {
   .sidebar {
     width: 60px;
