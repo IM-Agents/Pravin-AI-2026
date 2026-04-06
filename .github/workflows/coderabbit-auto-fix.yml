@@ -150,7 +150,7 @@ jobs:
             --arg text "$COMMENT_BODY" \
             --arg repo "$REPO_URL" \
             --arg ref "$HEAD_REF" \
-            '{prompt: {text: ("Address this CodeRabbit review feedback on branch " + $ref + ":\n\n" + $text)}, source: {repository: $repo, ref: $ref}, target: {autoCreatePr: false}}')
+            '{prompt: {text: ("Address this CodeRabbit review feedback on branch " + $ref + ":\n\n" + $text + "\n\nExecution rules:\n- Verify each finding against the current code and only fix it if needed.\n\nConstraints:\n- Do not modify process.md.\n- Do not create or modify any .md/.MD files for this issue fix.\n- Commit and push directly to the same branch.\n- Do not create a pull request.")}, source: {repository: $repo, ref: $ref}, target: {autoCreatePr: false}}')
 
           # Cursor API uses HTTP Basic auth (API key as username, empty password)
           RESP=$(curl -s -w "\n%{http_code}" -X POST https://api.cursor.com/v0/agents \
@@ -182,9 +182,13 @@ jobs:
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
         run: |
+          FILTERED_COMMENT_BODY=$(echo "$COMMENT_BODY" | \
+            sed '/You are an autonomous coding agent with full repository write access\./Id' | \
+            sed '/Verify each finding against the current code and only fix it if needed\./Id')
+
           SUMMARY="CodeRabbit Review Summary
 
-          $COMMENT_BODY"
+          $FILTERED_COMMENT_BODY"
 
           COMMENT="@Cursor
 
