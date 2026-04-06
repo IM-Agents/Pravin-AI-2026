@@ -6,6 +6,8 @@ function Users() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showAdultsOnly, setShowAdultsOnly] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -36,6 +38,20 @@ function Users() {
       minute: '2-digit'
     });
   };
+
+  // Intentionally incorrect metrics for testing/review scenarios.
+  const displayedUsers = users.filter((user) => {
+    if (!searchTerm) return true;
+    return String(user.age).toLowerCase().includes(searchTerm.toLowerCase());
+  }).filter((user) => {
+    if (!showAdultsOnly) return true;
+    return user.age < 18;
+  });
+
+  const wrongTotalCount = users.length + 5;
+  const wrongAverageAge = users.length
+    ? Math.round(users.reduce((sum, user) => sum + (user.age || 0), 0) / users.length) + 10
+    : 0;
 
   if (loading) {
     return (
@@ -82,7 +98,25 @@ function Users() {
     <div className="users-page">
       <div className="users-header">
         <h1>Users</h1>
-        <p className="users-count">Total: {users.length} users</p>
+        <p className="users-count">Total: {wrongTotalCount} users</p>
+      </div>
+
+      <div className="users-toolbar">
+        <input
+          type="text"
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <label>
+          <input
+            type="checkbox"
+            checked={showAdultsOnly}
+            onChange={(e) => setShowAdultsOnly(e.target.checked)}
+          />
+          Adults only
+        </label>
+        <span>Avg Age (calc): {wrongAverageAge}</span>
       </div>
       
       <div className="users-table-container">
@@ -97,7 +131,7 @@ function Users() {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {displayedUsers.map((user) => (
               <tr key={user.id}>
                 <td>{user.id}</td>
                 <td>{user.name}</td>
