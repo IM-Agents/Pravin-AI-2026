@@ -85,35 +85,35 @@ jobs:
             echo "$id"
           }
 
-          for PROC_FILE in process.md process.md.example; do
-            [ -f "$PROC_FILE" ] || continue
+          PROC_FILE="process.md"
+          if [ -f "$PROC_FILE" ]; then
             echo "Parsing $PROC_FILE for clickup_task and branch."
             PROC_BRANCH=$(proc_get branch "$PROC_FILE" || true)
             PROC_TASK_RAW=$(proc_get clickup_task "$PROC_FILE" || true)
-            if [ -z "$PROC_TASK_RAW" ]; then
-              continue
-            fi
-            if echo "$PROC_TASK_RAW" | grep -qi 'clickup\.com'; then
-              TASK_ID=$(id_from_clickup_string "$PROC_TASK_RAW")
-              PROC_TASK_URL=$(echo "$PROC_TASK_RAW" | tr -d '\r' | sed 's/[[:space:]]*$//')
-            else
-              CLEAN=$(echo "$PROC_TASK_RAW" | tr -d '\r')
-              if echo "$CLEAN" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-                TASK_ID="$CLEAN"
-                PROC_TASK_URL="https://app.clickup.com/t/${TASK_ID}"
+            if [ -n "$PROC_TASK_RAW" ]; then
+              if echo "$PROC_TASK_RAW" | grep -qi 'clickup\.com'; then
+                TASK_ID=$(id_from_clickup_string "$PROC_TASK_RAW")
+                PROC_TASK_URL=$(echo "$PROC_TASK_RAW" | tr -d '\r' | sed 's/[[:space:]]*$//')
+              else
+                CLEAN=$(echo "$PROC_TASK_RAW" | tr -d '\r')
+                if echo "$CLEAN" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+                  TASK_ID="$CLEAN"
+                  PROC_TASK_URL="https://app.clickup.com/t/${TASK_ID}"
+                fi
+              fi
+              if [ -n "$TASK_ID" ]; then
+                echo "ClickUp task id from $PROC_FILE: $TASK_ID"
               fi
             fi
-            if [ -n "$TASK_ID" ]; then
-              echo "ClickUp task id from $PROC_FILE: $TASK_ID"
-              break
-            fi
-          done
+          else
+            echo "process.md not found at repo root."
+          fi
 
           if [ -z "$TASK_ID" ]; then
-            echo "No clickup_task in process.md or process.md.example; skipping ClickUp validation and comments."
+            echo "No clickup_task in process.md; skipping ClickUp validation and comments."
           else
             if [ -z "$PROC_BRANCH" ]; then
-              echo "::error::When clickup_task is set, branch must be set in process.md or process.md.example (e.g. branch: cursor_new_oma_req) and must match the PR head branch."
+              echo "::error::When clickup_task is set, branch must be set in process.md (e.g. branch: cursor_new_oma_req) and must match the PR head branch."
               exit 1
             fi
             if [ "$PROC_BRANCH" != "$HEAD_REF" ]; then
@@ -123,6 +123,19 @@ jobs:
             echo "Branch validated: process branch matches PR head ($HEAD_REF)."
           fi
 
+          PROC_CURSOR_ID=""
+          if [ -f process.md ]; then
+            cid=$(proc_get cursor_id process.md || true)
+            if [ -n "$cid" ]; then
+              PROC_CURSOR_ID="$cid"
+              echo "cursor_id from process.md: $PROC_CURSOR_ID"
+            fi
+          fi
+          if [ -n "$PROC_CURSOR_ID" ] && ! echo "$PROC_CURSOR_ID" | grep -qE '^-?[0-9]+$'; then
+            echo "::warning::cursor_id '$PROC_CURSOR_ID' is not a valid integer; ignoring."
+            PROC_CURSOR_ID=""
+          fi
+
           echo "TASK_ID=$TASK_ID" >> $GITHUB_ENV
           {
             echo "PROC_TASK_URL<<__PROC_EOF__"
@@ -130,7 +143,62 @@ jobs:
             echo "__PROC_EOF__"
           } >> $GITHUB_ENV
           echo "PROC_BRANCH=$PROC_BRANCH" >> $GITHUB_ENV
+          echo "CLICKUP_MEMBER_ID=${PROC_CURSOR_ID}" >> $GITHUB_ENV
           echo "Final ClickUp task id: ${TASK_ID:-<empty>}"
+          echo "ClickUp mention/assign user id (from cursor_id in process file): ${PROC_CURSOR_ID:-<none>}"
+
+      # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
+      - name: Post implementation started comment to ClickUp
+        if: env.TASK_ID != ''
+        env:
+          CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
+        run: |
+          START_COMMENT="Implementation status: STARTED
+          Source: CodeRabbit review feedback detected
+          Action: Cursor automation has started implementation for this issue.
+
+          Task: ${{ env.PROC_TASK_URL }}
+          Branch: ${{ env.PROC_BRANCH }}"
+
+          if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+            START_BODY=$(jq -n \
+              --argjson uid "$CLICKUP_MEMBER_ID" \
+              --arg text "$START_COMMENT" \
+              '{comment: [ {type:"tag", user:{id:$uid}}, {text: ("\n\n" + $text)} ], notify_all:false, assignee:$uid}')
+          else
+            START_BODY=$(jq -n --arg text "@Cursor
+
+          $START_COMMENT
+
+          # @Cursor" '{comment_text:$text, notify_all:false}')
+          fi
+
+          START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
+            -H "Authorization: $CLICKUP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$START_BODY")
+
+          START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
+          echo "ClickUp implementation-start comment response code: $START_HTTP_CODE"
+
+          if [ "$START_HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+            echo "Rich comment failed; retrying with comment_text + assignee."
+            START_BODY=$(jq -n \
+              --argjson uid "$CLICKUP_MEMBER_ID" \
+              --arg text "$START_COMMENT" \
+              '{comment_text:$text, notify_all:false, assignee:$uid}')
+            START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
+              -H "Authorization: $CLICKUP_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$START_BODY")
+            START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
+            echo "ClickUp implementation-start (fallback) response code: $START_HTTP_CODE"
+          fi
+
+          if [ "$START_HTTP_CODE" != "200" ]; then
+            echo "ClickUp implementation-start response:"
+            echo "$START_RESP"
+          fi
 
       # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
       - name: Send suggestion to Cursor AI
@@ -150,7 +218,7 @@ jobs:
             --arg text "$COMMENT_BODY" \
             --arg repo "$REPO_URL" \
             --arg ref "$HEAD_REF" \
-            '{prompt: {text: ("Address this CodeRabbit review feedback on branch " + $ref + ":\n\n" + $text + "\n\nExecution rules:\n- Verify each finding against the current code and only fix it if needed.\n\nConstraints:\n- Do not modify process.md.\n- Do not create or modify any .md/.MD files for this issue fix.\n- Commit and push directly to the same branch.\n- Do not create a pull request.")}, source: {repository: $repo, ref: $ref}, target: {autoCreatePr: false}}')
+            '{prompt: {text: ("Address this CodeRabbit review feedback on branch " + $ref + ":\n\n" + $text)}, source: {repository: $repo, ref: $ref}, target: {autoCreatePr: false}}')
 
           # Cursor API uses HTTP Basic auth (API key as username, empty password)
           RESP=$(curl -s -w "\n%{http_code}" -X POST https://api.cursor.com/v0/agents \
@@ -182,22 +250,56 @@ jobs:
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
         run: |
-          FILTERED_COMMENT_BODY=$(echo "$COMMENT_BODY" | \
-            sed '/You are an autonomous coding agent with full repository write access\./Id' | \
-            sed '/Verify each finding against the current code and only fix it if needed\./Id')
+          CLEAN_COMMENT=$(printf '%s\n' "$COMMENT_BODY" \
+            | sed '/<!--/,/-->/d' \
+            | sed '/<details>/,/<\/details>/d' \
+            | sed '/^[[:space:]]*You are an autonomous coding agent/d' \
+            | sed '/^[[:space:]]*Task:[[:space:]]*/d' \
+            | sed '/^[[:space:]]*Branch:[[:space:]]*/d' \
+            | awk '
+                {
+                  line=$0
+                  sub(/\r$/, "", line)
+                  if (line ~ /^[[:space:]]*$/) {
+                    if (!blank) { print ""; blank=1 }
+                  } else {
+                    print line
+                    blank=0
+                  }
+                }
+              ' \
+            | sed '/^[[:space:]]*$/{
+                     N
+                     /^[[:space:]]*\n[[:space:]]*$/D
+                   }')
 
           SUMMARY="CodeRabbit Review Summary
 
-          $FILTERED_COMMENT_BODY"
+          ${CLEAN_COMMENT:-No actionable content found after sanitization.}"
 
-          COMMENT="@Cursor
+          BLOCK="
 
           $SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}"
 
-          BODY=$(jq -n --arg text "$COMMENT" '{comment_text:$text, notify_all:false}')
+          if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+            BODY=$(jq -n \
+              --argjson uid "$CLICKUP_MEMBER_ID" \
+              --arg text "$BLOCK" \
+              '{comment: [ {type:"tag", user:{id:$uid}}, {text: ("\n\n" + $text)} ], notify_all:false, assignee:$uid}')
+          else
+            COMMENT="@Cursor
+
+          $SUMMARY
+
+          Task: ${{ env.PROC_TASK_URL }}
+          Branch: ${{ env.PROC_BRANCH }}
+
+          # @Cursor"
+            BODY=$(jq -n --arg text "$COMMENT" '{comment_text:$text, notify_all:false}')
+          fi
 
           RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
             -H "Authorization: $CLICKUP_API_KEY" \
@@ -207,6 +309,28 @@ jobs:
           HTTP_CODE=$(echo "$RESP" | tail -n1)
 
           echo "ClickUp response code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+            echo "Rich comment failed; retrying with comment_text + assignee."
+            COMMENT="@Cursor
+
+          $SUMMARY
+
+          Task: ${{ env.PROC_TASK_URL }}
+          Branch: ${{ env.PROC_BRANCH }}
+
+          # @Cursor"
+            BODY=$(jq -n \
+              --argjson uid "$CLICKUP_MEMBER_ID" \
+              --arg text "$COMMENT" \
+              '{comment_text:$text, notify_all:false, assignee:$uid}')
+            RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
+              -H "Authorization: $CLICKUP_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$BODY")
+            HTTP_CODE=$(echo "$RESP" | tail -n1)
+            echo "ClickUp summary (fallback) response code: $HTTP_CODE"
+          fi
 
           if [ "$HTTP_CODE" != "200" ]; then
             echo "ClickUp response:"
