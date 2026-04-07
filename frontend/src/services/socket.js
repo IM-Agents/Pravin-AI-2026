@@ -7,7 +7,7 @@ class SocketService {
   }
 
   connect() {
-    if (this.socket?.connected) return;
+    if (this.socket) return this.socket;
 
     this.socket = io(window.location.origin, {
       transports: ['websocket', 'polling']
