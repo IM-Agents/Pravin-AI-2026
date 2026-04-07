@@ -7,9 +7,17 @@
 
 ## Branch Information
 
-**base_branch**: main  
-**branch**: cursor_new_oma_req  
-**clickup_task**: 86d2hrt56
+**base_branch**: cursor_new_oma_req  
+**branch**: cursor_new_oma_req_review  
+**clickup_task**: 86d2hrt56  
+
+**cursor_id** (temporary — ClickUp user id for @Cursor / assign): `-16861486`
+
+The GitHub Action reads only lines that look like `key: value` at the start of a line (no `**`):
+
+branch: cursor_new_oma_req_review
+clickup_task: 86d2hrt56
+cursor_id: -16861486
 
 ## Task Objective
 
@@ -17,7 +25,7 @@ Investigate and resolve code push issues in the OMA (Order Management Automation
 
 ## Current Status
 
-- ✅ Switched to cursor_new_oma_req branch
+- ✅ Switched to cursor_new_oma_req_review branch
 - ✅ Pulled latest changes
 - ✅ Process metadata created
 - ⏳ Code push verification in progress

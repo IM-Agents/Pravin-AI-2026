@@ -61,17 +61,17 @@ Then the existing "Commit fixes" step will pick up those changes. If Cursor appl
 | **CodeRabbit** | Yes  | CodeRabbit app installed on the repo (reviews PRs and leaves comments). |
 | **ClickUp** | No       | Optional. Only if you want a comment posted to a ClickUp task: add **`CLICKUP_API_KEY`**. No need to set a task ID in secrets. |
 
-Per-PR task resolution is optional; use **`process.md`** or **`process.md.example`** at the repo root (see below).
+Per-PR task resolution is optional; use **`process.md`** at the repo root (see below).
 
 ### ClickUp (optional – task per branch / PR)
 
 If you want the workflow to post a comment to a **ClickUp task**:
 
 - Add secret **`CLICKUP_API_KEY`** (your ClickUp API token) in the repo.
-- Put **`clickup_task`** (and optional **`branch`**) in **`process.md`** or **`process.md.example`**, in that order: the workflow uses **`process.md`** first, then **`process.md.example`** if needed. It does **not** read the PR title/body or **`CLICKUP_TASK_ID`** for resolution.
+- Put **`clickup_task`**, **`branch`**, and optional **`cursor_id`** in **`process.md`** only. It does **not** read the PR title/body or **`CLICKUP_TASK_ID`** for resolution.
 - The ClickUp comment text uses the **task link** and **branch** from that file only (no PR or commit URLs).
 
-If you don't add `CLICKUP_API_KEY` or no `clickup_task` is found in either file, the workflow skips posting to ClickUp and still does CodeRabbit → Cursor → commit.
+If you don't add `CLICKUP_API_KEY` or no `clickup_task` is found in **`process.md`**, the workflow skips posting to ClickUp and still does CodeRabbit → Cursor → commit.
 
 ## 7. Permissions
 
@@ -80,4 +80,4 @@ If you don't add `CLICKUP_API_KEY` or no `clickup_task` is found in either file,
 
 ---
 
-**Summary:** You only **must** set **`CURSOR_API_KEY`** in GitHub and have CodeRabbit installed. ClickUp is optional; if you use it, add **`CLICKUP_API_KEY`** and define **`clickup_task`** (and optional **`branch`**) in **`process.md`** or **`process.md.example`** on the branch.
+**Summary:** You only **must** set **`CURSOR_API_KEY`** in GitHub and have CodeRabbit installed. ClickUp is optional; if you use it, add **`CLICKUP_API_KEY`** and define **`clickup_task`** (and optional **`branch`**, **`cursor_id`**) in **`process.md`** on the branch.
