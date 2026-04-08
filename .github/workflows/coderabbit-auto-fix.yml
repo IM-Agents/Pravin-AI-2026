@@ -13,6 +13,14 @@ on:
 jobs:
   ai_fix:
     runs-on: ubuntu-latest
+    # Prepended to every ClickUp task comment (not stored in process.md).
+    # General docs belong in README.md — process.md is only for automation keys (branch, clickup_task, cursor_id).
+    env:
+      CLICKUP_AGENT_INTRO: 'You are an autonomous coding agent with full repository write access.'
+      # Shown in ClickUp after the intro — keeps fixes in source files and leaves process.md alone.
+      CLICKUP_AGENT_RULES: |
+        Constraints: edit application source files directly; do not add new .md files to implement fixes.
+        Do not change process.md (reserved for automation keys). Add documentation to README.md instead of process.md.
 
     if: |
       contains(github.event.comment.user.login, 'coderabbit') ||
@@ -148,59 +156,6 @@ jobs:
           echo "ClickUp mention/assign user id (from cursor_id in process file): ${PROC_CURSOR_ID:-<none>}"
 
       # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
-      - name: Post implementation started comment to ClickUp
-        if: env.TASK_ID != ''
-        env:
-          CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
-        run: |
-          START_COMMENT="Implementation status: STARTED
-          Source: CodeRabbit review feedback detected
-          Action: Cursor automation has started implementation for this issue.
-
-          Task: ${{ env.PROC_TASK_URL }}
-          Branch: ${{ env.PROC_BRANCH }}"
-
-          if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            START_BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
-              --arg text "$START_COMMENT" \
-              '{comment: [ {type:"tag", user:{id:$uid}}, {text: ("\n\n" + $text)} ], notify_all:false, assignee:$uid}')
-          else
-            START_BODY=$(jq -n --arg text "@Cursor
-
-          $START_COMMENT
-
-          # @Cursor" '{comment_text:$text, notify_all:false}')
-          fi
-
-          START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-            -H "Authorization: $CLICKUP_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$START_BODY")
-
-          START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
-          echo "ClickUp implementation-start comment response code: $START_HTTP_CODE"
-
-          if [ "$START_HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            echo "Rich comment failed; retrying with comment_text + assignee."
-            START_BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
-              --arg text "$START_COMMENT" \
-              '{comment_text:$text, notify_all:false, assignee:$uid}')
-            START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-              -H "Authorization: $CLICKUP_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$START_BODY")
-            START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
-            echo "ClickUp implementation-start (fallback) response code: $START_HTTP_CODE"
-          fi
-
-          if [ "$START_HTTP_CODE" != "200" ]; then
-            echo "ClickUp implementation-start response:"
-            echo "$START_RESP"
-          fi
-
-      # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
       - name: Send suggestion to Cursor AI
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
@@ -273,7 +228,11 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          SUMMARY="CodeRabbit Review Summary
+          SUMMARY="$CLICKUP_AGENT_INTRO
+
+          $CLICKUP_AGENT_RULES
+
+          CodeRabbit Review Summary
 
           ${CLEAN_COMMENT:-No actionable content found after sanitization.}"
 
