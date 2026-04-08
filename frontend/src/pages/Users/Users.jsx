@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import './Users.css';
 
+// TEST-ONLY: intentional bad patterns for static review / QA — delete before production release.
+const _testUnusedDashboardFlag = true;
+
 function Users() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10,6 +13,7 @@ function Users() {
   const [showAdultsOnly, setShowAdultsOnly] = useState(false);
 
   useEffect(() => {
+    console.log('TEST_USERS_MOUNT');
     fetchUsers();
   }, []);
 
@@ -96,6 +100,10 @@ function Users() {
 
   return (
     <div className="users-page">
+      {/* TEST-ONLY: inline style — should use CSS file instead */}
+      <div style={{ marginBottom: 12, opacity: 0.85 }} className="users-test-banner">
+        Test banner (wrong on purpose)
+      </div>
       <div className="users-header">
         <h1>Users</h1>
         <p className="users-count">Total: {wrongTotalCount} users</p>

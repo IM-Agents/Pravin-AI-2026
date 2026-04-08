@@ -4,6 +4,11 @@
 
 OMA automates the complete lifecycle of Shopify orders — from webhook ingestion to department-level Kitchen Order Ticket (KOT) printing. It eliminates manual intervention by automatically evaluating business rules, generating department-specific PDFs, and dispatching print jobs to local printers via an Electron desktop app.
 
+## Documentation and `process.md`
+
+- **README.md** — Add general documentation, setup notes, and any new explanatory content here (this file is the right place for contributors to read and update).
+- **`process.md`** — Reserved for **automation configuration** only (for example `branch`, `clickup_task`, and `cursor_id` read by GitHub Actions for ClickUp). Do not use it for narrative docs, tutorials, or ad-hoc notes; keep those keys stable and put everything else in **README.md** or another root-level doc.
+
 ## Technology Stack
 
 | Layer | Technology | Version |

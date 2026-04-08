@@ -13,6 +13,14 @@ on:
 jobs:
   ai_fix:
     runs-on: ubuntu-latest
+    # Prepended to every ClickUp task comment (not stored in process.md).
+    # General docs belong in README.md — process.md is only for automation keys (branch, clickup_task, cursor_id).
+    env:
+      CLICKUP_AGENT_INTRO: 'You are an autonomous coding agent with full repository write access.'
+      # Shown in ClickUp after the intro — keeps fixes in source files and leaves process.md alone.
+      CLICKUP_AGENT_RULES: |
+        Constraints: edit application source files directly; do not add new .md files to implement fixes.
+        Do not change process.md (reserved for automation keys). Add documentation to README.md instead of process.md.
 
     if: |
       contains(github.event.comment.user.login, 'coderabbit') ||
@@ -46,15 +54,42 @@ jobs:
           echo "$COMMENT_BODY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+      # All inline PR review comments from CodeRabbit (one ClickUp post with full PR feedback).
+      - name: Fetch all CodeRabbit PR review comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -e
+          RAW=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null || true)
+          PAGES=$(printf '%s' "$RAW" | jq -s 'add // []' 2>/dev/null || echo '[]')
+          AGG_TEXT=$(echo "$PAGES" | jq -r '
+            [.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))]
+            | sort_by(.created_at)
+            | unique_by(.id)
+            | map(.body)
+            | join("\n\n---\n\n")
+          ' 2>/dev/null || echo '')
+          {
+            echo "CLICKUP_AGGREGATE_BODY<<__AGG_EOF__"
+            echo "$AGG_TEXT"
+            echo "__AGG_EOF__"
+          } >> $GITHUB_ENV
+          COUNT=$(echo "$PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
+          echo "Aggregated CodeRabbit inline comments on PR #${PR_NUMBER}: ${COUNT}"
+
       - name: Debug comment
         run: |
-          echo "Detected CodeRabbit suggestion:"
+          echo "Detected CodeRabbit suggestion (this event):"
           echo "$COMMENT_BODY"
+          echo "---"
+          echo "Aggregated CodeRabbit bodies length (chars): ${#CLICKUP_AGGREGATE_BODY}"
 
-      - name: Skip if comment empty
+      - name: Skip if nothing to process
         run: |
-          if [ -z "$COMMENT_BODY" ]; then
-            echo "No comment body found. Skipping."
+          if [ -z "${COMMENT_BODY:-}" ] && [ -z "${CLICKUP_AGGREGATE_BODY:-}" ]; then
+            echo "No CodeRabbit text for this event and no aggregated PR comments. Skipping."
             exit 0
           fi
 
@@ -148,59 +183,6 @@ jobs:
           echo "ClickUp mention/assign user id (from cursor_id in process file): ${PROC_CURSOR_ID:-<none>}"
 
       # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
-      - name: Post implementation started comment to ClickUp
-        if: env.TASK_ID != ''
-        env:
-          CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
-        run: |
-          START_COMMENT="Implementation status: STARTED
-          Source: CodeRabbit review feedback detected
-          Action: Cursor automation has started implementation for this issue.
-
-          Task: ${{ env.PROC_TASK_URL }}
-          Branch: ${{ env.PROC_BRANCH }}"
-
-          if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            START_BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
-              --arg text "$START_COMMENT" \
-              '{comment: [ {type:"tag", user:{id:$uid}}, {text: ("\n\n" + $text)} ], notify_all:false, assignee:$uid}')
-          else
-            START_BODY=$(jq -n --arg text "@Cursor
-
-          $START_COMMENT
-
-          # @Cursor" '{comment_text:$text, notify_all:false}')
-          fi
-
-          START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-            -H "Authorization: $CLICKUP_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$START_BODY")
-
-          START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
-          echo "ClickUp implementation-start comment response code: $START_HTTP_CODE"
-
-          if [ "$START_HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            echo "Rich comment failed; retrying with comment_text + assignee."
-            START_BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
-              --arg text "$START_COMMENT" \
-              '{comment_text:$text, notify_all:false, assignee:$uid}')
-            START_RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-              -H "Authorization: $CLICKUP_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$START_BODY")
-            START_HTTP_CODE=$(echo "$START_RESP" | tail -n1)
-            echo "ClickUp implementation-start (fallback) response code: $START_HTTP_CODE"
-          fi
-
-          if [ "$START_HTTP_CODE" != "200" ]; then
-            echo "ClickUp implementation-start response:"
-            echo "$START_RESP"
-          fi
-
-      # Optional Cursor integration (Cursor Cloud Agents API — see https://docs.cursor.com/account/api)
       - name: Send suggestion to Cursor AI
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
@@ -209,6 +191,11 @@ jobs:
         run: |
           if [ -z "$CURSOR_API_KEY" ]; then
             echo "CURSOR_API_KEY not configured, skipping Cursor step."
+            exit 0
+          fi
+
+          if [ -z "${COMMENT_BODY:-}" ]; then
+            echo "No comment body on this event; skipping Cursor (use aggregated text only for ClickUp)."
             exit 0
           fi
 
@@ -250,7 +237,13 @@ jobs:
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
         run: |
-          CLEAN_COMMENT=$(printf '%s\n' "$COMMENT_BODY" \
+          # Prefer full PR aggregate so ClickUp gets every CodeRabbit inline comment in one post.
+          SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
+          if [ -z "$SOURCE_TEXT" ]; then
+            SOURCE_TEXT="$COMMENT_BODY"
+          fi
+
+          CLEAN_COMMENT=$(printf '%s\n' "$SOURCE_TEXT" \
             | sed '/<!--/,/-->/d' \
             | sed '/<details>/,/<\/details>/d' \
             | sed '/^[[:space:]]*You are an autonomous coding agent/d' \
@@ -273,7 +266,11 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          SUMMARY="CodeRabbit Review Summary
+          SUMMARY="$CLICKUP_AGENT_INTRO
+
+          $CLICKUP_AGENT_RULES
+
+          CodeRabbit Review Summary
 
           ${CLEAN_COMMENT:-No actionable content found after sanitization.}"
 
