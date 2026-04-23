@@ -18,6 +18,8 @@ jobs:
     env:
       # ClickUp member id for assign + rich comment tag (workspace user; here: n8n).
       CLICKUP_ASSIGNEE_USER_ID: '101032796'
+      # Configurable starter line shown first in ClickUp to guide agent kickoff.
+      CLICKUP_AGENT_PREFIX: 'Fix this CodeRabbit bugs.'
       CLICKUP_AGENT_INTRO: 'You are an autonomous coding agent with full repository write access.'
       # Shown in ClickUp after the intro — keeps fixes in source files and leaves process.md alone.
       CLICKUP_AGENT_RULES: |
@@ -204,7 +206,9 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          SUMMARY="$CLICKUP_AGENT_INTRO
+          SUMMARY="$CLICKUP_AGENT_PREFIX
+
+          $CLICKUP_AGENT_INTRO
 
           $CLICKUP_AGENT_RULES
 
