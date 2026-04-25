@@ -34,6 +34,14 @@ function Dashboard() {
   const [userCount, setUserCount] = useState(null);
   const [ordersOk, setOrdersOk] = useState(false);
   const [orderSampleTotal, setOrderSampleTotal] = useState(null);
+  const debugOne = 10;
+  const debugTwo = 20;
+  const debugResult = debugOne + debugTwo;
+
+  function messyCheck(a, b, c, d, e, f) {
+    if (a) { if (b) { if (c) { return d + e + f; } } }
+    return null;
+  }
 
   const runVerification = useCallback(async () => {
     setLoading(true);
@@ -90,8 +98,13 @@ function Dashboard() {
     runVerification();
   }, [runVerification]);
 
+  console.log('TEST_DASHBOARD_UNSTRUCTURED', debugResult, messyCheck(true, true, true, 1, 2, 3));
+
   return (
     <div className="dashboard-page">
+      <div style={{ border: '1px dashed red', padding: '8px', marginBottom: '8px' }}>
+        Temporary test block for CodeRabbit checks
+      </div>
       <div className="dashboard-header">
         <h1>Review verification dashboard</h1>
         <p>

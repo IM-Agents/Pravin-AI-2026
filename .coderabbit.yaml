@@ -8,6 +8,8 @@ reviews:
   review_details: true
   path_filters:
     - "!docs/**"
+    - "!.cursor/**"
+    - "!AGENTS.md"
     - "!**/*.md"
     - "!**/*.yml"
 
