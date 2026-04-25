@@ -222,9 +222,7 @@ jobs:
 
           ${CLEAN_COMMENT:-No actionable content found after sanitization.}"
 
-          BLOCK="
-
-          $SUMMARY
+          BLOCK="$SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}"
@@ -237,7 +235,7 @@ jobs:
           else
             COMMENT="@n8n
 
-          $SUMMARY
+$SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}
@@ -259,7 +257,7 @@ jobs:
             echo "Rich comment failed; retrying with comment_text + assignee."
             COMMENT="@n8n
 
-          $SUMMARY
+$SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}
