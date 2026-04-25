@@ -6,6 +6,10 @@ reviews:
   profile: assertive
   request_changes_workflow: true
   review_details: true
+  path_filters:
+    - "!docs/**"
+    - "!**/*.md"
+    - "!**/*.yml"
 
   path_instructions:
     - path: "frontend/src/**/*.{js,jsx}"
