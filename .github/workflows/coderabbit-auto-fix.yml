@@ -212,7 +212,8 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          SUMMARY="$CLICKUP_AGENT_PREFIX
+          if [ -n "${CLEAN_COMMENT:-}" ]; then
+            SUMMARY="$CLICKUP_AGENT_PREFIX
 
           $CLICKUP_AGENT_INTRO
 
@@ -220,7 +221,10 @@ jobs:
 
           CodeRabbit Review Summary
 
-          ${CLEAN_COMMENT:-No actionable content found after sanitization.}"
+          $CLEAN_COMMENT"
+          else
+            SUMMARY="No improvements needed."
+          fi
 
           BLOCK="$SUMMARY
 
