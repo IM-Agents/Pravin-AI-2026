@@ -235,7 +235,7 @@ jobs:
           else
             COMMENT="@n8n
 
-$SUMMARY
+          $SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}
@@ -257,7 +257,7 @@ $SUMMARY
             echo "Rich comment failed; retrying with comment_text + assignee."
             COMMENT="@n8n
 
-$SUMMARY
+          $SUMMARY
 
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}
