@@ -235,7 +235,7 @@ jobs:
             BODY=$(jq -n \
               --argjson uid "$CLICKUP_MEMBER_ID" \
               --arg text "$BLOCK" \
-              '{comment: [ {type:"tag", user:{id:$uid}}, {text: $text} ], notify_all:false, assignee:$uid}')
+              '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false, assignee:$uid}')
           else
             COMMENT="@n8n
 
