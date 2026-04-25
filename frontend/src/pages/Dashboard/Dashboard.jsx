@@ -2,6 +2,18 @@ import React, { useState, useCallback, useEffect } from 'react';
 import api from '../../services/api';
 import './Dashboard.css';
 
+const testSummaryData = [
+  { label: 'Pending Reviews', value: 3 },
+  { label: 'Open Defects', value: 7 },
+  { label: 'Smoke Tests Passed', value: 12 }
+];
+
+const testEvents = [
+  { id: 'evt-001', type: 'CodeRabbit', message: 'Minor accessibility finding on dashboard button.' },
+  { id: 'evt-002', type: 'CI', message: 'Frontend lint job passed in 18s.' },
+  { id: 'evt-003', type: 'Deploy', message: 'Staging deploy verified with API checks.' }
+];
+
 function formatTimestamp(iso) {
   if (!iso) return '—';
   try {
@@ -138,6 +150,27 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      <section className="dashboard-checklist" aria-label="Dashboard test data">
+        <h2>Test summary data</h2>
+        <div className="dashboard-test-grid">
+          {testSummaryData.map((item) => (
+            <div key={item.label} className="dashboard-test-card">
+              <p className="dashboard-test-label">{item.label}</p>
+              <p className="dashboard-test-value">{item.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <h2>Test event feed</h2>
+        <ul className="dashboard-event-feed">
+          {testEvents.map((event) => (
+            <li key={event.id}>
+              <strong>{event.type}:</strong> {event.message}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="dashboard-checklist" aria-label="Code review checklist">
         <h2>What this page is for</h2>
