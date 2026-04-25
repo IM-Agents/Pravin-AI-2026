@@ -2,21 +2,21 @@
 
 ## Task Information
 
-**ClickUp Task**: https://app.clickup.com/t/86d2t7q4w
+**ClickUp Task**: https://app.clickup.com/t/86d2t7wfa
 **Task Title**: Cursor Check again code push issue  
 
 ## Branch Information
 
 **base_branch**: cursor_new_oma_req  
 **branch**: cursor_new_oma_req_review  
-**clickup_task**: 86d2t7q4w  
+**clickup_task**: 86d2t7wfa  
 
 **cursor_id** (temporary — ClickUp user id for @n8n / assign): `101032796`
 
 The GitHub Action reads only lines that look like `key: value` at the start of a line (no `**`):
 
 branch: cursor_new_oma_req_review
-clickup_task: 86d2t7q4w
+clickup_task: 86d2t7wfa
 cursor_id: 101032796
 
 ## Task Objective
