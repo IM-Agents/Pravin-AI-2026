@@ -7,17 +7,12 @@
 
 ## Branch Information
 
-**base_branch**: cursor_new_oma_req  
-**branch**: cursor_new_oma_req_review  
-**clickup_task**: 86d2t7wfa  
+The GitHub Action reads only lines that look like `key: value` at the start of a line:
 
-**cursor_id** (temporary — ClickUp user id for @n8n / assign): `101032796`
-
-The GitHub Action reads only lines that look like `key: value` at the start of a line (no `**`):
-
+base_branch: cursor_new_oma_req
 branch: cursor_new_oma_req_review
 clickup_task: 86d2t7wfa
-cursor_id: 101032796
+clickup_user_id: 101032796
 
 ## Task Objective
 
@@ -39,12 +34,7 @@ This is the main OMA feature branch containing:
 - MySQL database schema
 - Complete Order Management Automation system
 
-## Notes
-
-Working on the `cursor_new_oma_req` branch as specified. This branch contains the complete OMA system implementation with frontend, backend, and desktop components.
-
 ---
 
 **Created**: 2026-04-25  
 **Last Updated**: 2026-04-25  
-**Branch**: cursor_new_oma_req
