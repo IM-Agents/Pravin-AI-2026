@@ -177,6 +177,12 @@ jobs:
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
         run: |
+          CLICKUP_TOKEN=$(printf '%s' "${CLICKUP_API_KEY:-}" | tr -d '\r\n' | xargs)
+          if [ -z "$CLICKUP_TOKEN" ]; then
+            echo "::warning::CLICKUP_API_KEY is missing/empty after trim. Skipping ClickUp comment."
+            exit 0
+          fi
+
           # Prefer full PR aggregate so ClickUp gets every CodeRabbit inline comment in one post.
           SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
           if [ -z "$SOURCE_TEXT" ]; then
@@ -241,7 +247,7 @@ jobs:
           fi
 
           RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-            -H "Authorization: $CLICKUP_API_KEY" \
+            -H "Authorization: $CLICKUP_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$BODY")
 
@@ -264,7 +270,7 @@ jobs:
               --arg text "$COMMENT" \
               '{comment_text:$text, notify_all:false, assignee:$uid}')
             RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-              -H "Authorization: $CLICKUP_API_KEY" \
+              -H "Authorization: $CLICKUP_TOKEN" \
               -H "Content-Type: application/json" \
               -d "$BODY")
             HTTP_CODE=$(echo "$RESP" | tail -n1)
@@ -274,6 +280,9 @@ jobs:
           if [ "$HTTP_CODE" != "200" ]; then
             echo "ClickUp response:"
             echo "$RESP"
+            if [ "$HTTP_CODE" = "401" ]; then
+              echo "::error::ClickUp returned 401 (invalid token). Update GitHub secret CLICKUP_API_KEY with a valid ClickUp API token for this workspace."
+            fi
           fi
 
       - name: Finish

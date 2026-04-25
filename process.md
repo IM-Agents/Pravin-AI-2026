@@ -11,13 +11,13 @@
 **branch**: cursor_new_oma_req_review  
 **clickup_task**: 86d2t7wfa  
 
-**cursor_id** (temporary — ClickUp user id for @n8n / assign): `101032796`
+**clickup_user_id** (temporary — ClickUp user id for @n8n / assign): `101032796`
 
 The GitHub Action reads only lines that look like `key: value` at the start of a line (no `**`):
 
 branch: cursor_new_oma_req_review
 clickup_task: 86d2t7wfa
-cursor_id: 101032796
+clickup_user_id: 101032796
 
 ## Task Objective
 
