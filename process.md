@@ -1,39 +1,5 @@
-# Process Metadata
-
-## Task Information
-
-**ClickUp Task**: https://app.clickup.com/t/86d2t7wfa
-
-## Branch Information
-
-The GitHub Action reads only lines that look like `key: value` at the start of a line:
 
 base_branch: cursor_new_oma_req
 branch: cursor_new_oma_req_review
 clickup_task: 86d2t7wfa
 clickup_user_id: 101032796
-
-## Task Objective
-
-Investigate and resolve code push issues in the OMA (Order Management Automation) repository. Verify that git push operations are working correctly on the `cursor_new_oma_req` branch and ensure all code changes can be properly committed and pushed.
-
-## Current Status
-
-- ✅ Switched to cursor_new_oma_req_review branch
-- ✅ Pulled latest changes
-- ✅ Process metadata created
-- ⏳ Code push verification in progress
-
-## Repository Context
-
-This is the main OMA feature branch containing:
-- React 18 frontend (Order Management UI)
-- Node.js + Express backend (API and webhook handlers)
-- Electron desktop app (Printer management)
-- MySQL database schema
-- Complete Order Management Automation system
-
----
-
-**Created**: 2026-04-25  
-**Last Updated**: 2026-04-25  
