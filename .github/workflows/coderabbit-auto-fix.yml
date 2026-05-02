@@ -16,7 +16,7 @@ jobs:
     # Prepended to every ClickUp task comment (not stored in process.md).
     # General docs belong in README.md — process.md is only for automation keys (branch, clickup_task).
     env:
-      # ClickUp member id for assign + rich comment tag (workspace user; here: n8n).
+      # ClickUp member id for rich comment @mention (optional; workspace user id).
       CLICKUP_ASSIGNEE_USER_ID: '101032796'
       # Configurable starter line shown first in ClickUp to guide agent kickoff.
       CLICKUP_AGENT_PREFIX: 'Role: Start fixing the CodeRabbit bugs'
@@ -25,10 +25,12 @@ jobs:
       CLICKUP_AGENT_RULES: |
         Constraints: edit application source files directly; do not add new .md files to implement fixes.
         Do not change process.md (reserved for automation keys). Add documentation to README.md instead of process.md.
+      # Posted to ClickUp when CodeRabbit leaves no actionable summary content or approves the PR on GitHub.
+      CLICKUP_NO_IMPROVEMENTS_SUMMARY: 'Role: No improvements needed. Now the Run project'
 
     if: |
-      contains(github.event.comment.user.login, 'coderabbit') ||
-      contains(github.event.review.user.login, 'coderabbit')
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.user.login, 'coderabbit')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.user.login, 'coderabbit'))
 
     permissions:
       contents: read
@@ -89,8 +91,24 @@ jobs:
           echo "---"
           echo "Aggregated CodeRabbit bodies length (chars): ${#CLICKUP_AGGREGATE_BODY}"
 
+      - name: Detect CodeRabbit PR approval
+        id: cu_flags
+        run: |
+          coderabbit_approval=false
+          if [ "${{ github.event_name }}" = "pull_request_review" ] \
+            && [ "${{ github.event.review.state }}" = "approved" ] \
+            && echo "${{ github.event.review.user.login }}" | grep -qi coderabbit; then
+            coderabbit_approval=true
+            echo "CodeRabbit approved this PR — ClickUp will use CLICKUP_NO_IMPROVEMENTS_SUMMARY."
+          fi
+          echo "coderabbit_approval=${coderabbit_approval}" >> "$GITHUB_OUTPUT"
+
       - name: Skip if nothing to process
         run: |
+          if [ "${{ steps.cu_flags.outputs.coderabbit_approval }}" = "true" ]; then
+            echo "CodeRabbit approved the PR — continuing (ClickUp uses CLICKUP_NO_IMPROVEMENTS_SUMMARY)."
+            exit 0
+          fi
           if [ -z "${COMMENT_BODY:-}" ] && [ -z "${CLICKUP_AGGREGATE_BODY:-}" ]; then
             echo "No CodeRabbit text for this event and no aggregated PR comments. Skipping."
             exit 0
@@ -104,13 +122,16 @@ jobs:
           PROC_BRANCH=""
           PROC_TASK_URL=""
 
+          # Matches plain "key: value" or Markdown "- **key**: value" (optional list + bold).
           proc_get() {
             local key="$1"
             local file="$2"
             local line
-            line=$(grep -E "^[[:space:]]*${key}:[[:space:]]*" "$file" | head -1 || true)
+            line=$(
+              grep -E "^[[:space:]]*(-[[:space:]]+)?(\\*\\*)?${key}(\\*\\*)?:[[:space:]]*" "$file" | head -1 || true
+            )
             [ -z "$line" ] && return 0
-            echo "$line" | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
+            echo "$line" | sed -E "s/^[[:space:]]*(-[[:space:]]+)?(\\*\\*)?${key}(\\*\\*)?:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
           }
 
           id_from_clickup_string() {
@@ -176,6 +197,7 @@ jobs:
         if: env.TASK_ID != ''
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
+          IS_CODERABBIT_APPROVAL: ${{ steps.cu_flags.outputs.coderabbit_approval }}
         run: |
           CLICKUP_TOKEN=$(printf '%s' "${CLICKUP_API_KEY:-}" | tr -d '\r\n' | xargs)
           if [ -z "$CLICKUP_TOKEN" ]; then
@@ -212,7 +234,9 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          if [ -n "${CLEAN_COMMENT:-}" ]; then
+          if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
+            SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
+          elif [ -n "${CLEAN_COMMENT:-}" ]; then
             SUMMARY="$CLICKUP_AGENT_PREFIX
 
           $CLICKUP_AGENT_INTRO
@@ -223,7 +247,7 @@ jobs:
 
           $CLEAN_COMMENT"
           else
-            SUMMARY="Role: No improvements needed. Now the Run project"
+            SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           fi
 
           BLOCK="$SUMMARY
@@ -238,15 +262,7 @@ jobs:
               --arg text "$BLOCK" \
               '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false}')
           else
-            COMMENT="@n8n
-
-          $SUMMARY
-
-          Task: ${{ env.PROC_TASK_URL }}
-          Branch: ${{ env.PROC_BRANCH }}
-
-          # @n8n"
-            BODY=$(jq -n --arg text "$COMMENT" '{comment_text:$text, notify_all:false}')
+            BODY=$(jq -n --arg text "$BLOCK" '{comment_text:$text, notify_all:false}')
           fi
 
           RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
@@ -259,17 +275,9 @@ jobs:
           echo "ClickUp response code: $HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            echo "Rich comment failed; retrying with plain comment_text (no task assignee)."
-            COMMENT="@n8n
-
-          $SUMMARY
-
-          Task: ${{ env.PROC_TASK_URL }}
-          Branch: ${{ env.PROC_BRANCH }}
-
-          # @n8n"
+            echo "Rich comment failed; retrying with plain comment_text (no user tag)."
             BODY=$(jq -n \
-              --arg text "$COMMENT" \
+              --arg text "$BLOCK" \
               '{comment_text:$text, notify_all:false}')
             RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
               -H "Authorization: $CLICKUP_TOKEN" \
