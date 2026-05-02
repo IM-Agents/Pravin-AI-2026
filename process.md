@@ -2,7 +2,7 @@
 
 ## Task Information
 - **base_branch**: main
-- **branch**: Saturday_test_task_one
+- **branch**: cursor_new_oma_req_review
 - **clickup_task**: 86d2vn0vq
 
 ## Description
