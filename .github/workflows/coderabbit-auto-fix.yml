@@ -104,13 +104,16 @@ jobs:
           PROC_BRANCH=""
           PROC_TASK_URL=""
 
+          # Matches plain "key: value" or Markdown "- **key**: value" (optional list + bold).
           proc_get() {
             local key="$1"
             local file="$2"
             local line
-            line=$(grep -E "^[[:space:]]*${key}:[[:space:]]*" "$file" | head -1 || true)
+            line=$(
+              grep -E "^[[:space:]]*(-[[:space:]]+)?(\\*\\*)?${key}(\\*\\*)?:[[:space:]]*" "$file" | head -1 || true
+            )
             [ -z "$line" ] && return 0
-            echo "$line" | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
+            echo "$line" | sed -E "s/^[[:space:]]*(-[[:space:]]+)?(\\*\\*)?${key}(\\*\\*)?:[[:space:]]*//;s/[[:space:]]*#.*$//;s/[[:space:]]*$//;s/^[\"']//;s/[\"']$//"
           }
 
           id_from_clickup_string() {
