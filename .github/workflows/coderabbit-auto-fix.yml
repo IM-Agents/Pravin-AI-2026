@@ -24,7 +24,7 @@ jobs:
       # Shown in ClickUp after the intro — keeps fixes in source files and leaves process.md alone.
       CLICKUP_AGENT_RULES: |
         Constraints: edit application source files directly; do not add new .md files to implement fixes.
-        Do not change process.md (reserved for automation keys). Add documentation to README.md instead of process.md.
+        Do not change process.md (reserved for automation keys). Only give code change writeups.
       # Posted to ClickUp when CodeRabbit leaves no actionable summary content or approves the PR on GitHub.
       CLICKUP_NO_IMPROVEMENTS_SUMMARY: 'Role: No improvements needed. Now the Run project'
 
@@ -59,18 +59,24 @@ jobs:
           echo "$COMMENT_BODY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      # All inline PR review comments from CodeRabbit (one ClickUp post with full PR feedback).
-      - name: Fetch all CodeRabbit PR review comments
+      # CodeRabbit inline comments anchored to the current PR head only (avoids re-posting older pushes).
+      # Comment bodies include markdown + suggested code fences like Untitled-1 examples.
+      - name: Fetch CodeRabbit PR comments for latest push (HEAD)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -e
           RAW=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null || true)
           PAGES=$(printf '%s' "$RAW" | jq -s 'add // []' 2>/dev/null || echo '[]')
-          AGG_TEXT=$(echo "$PAGES" | jq -r '
-            [.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))]
+          TOTAL=$(echo "$PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
+          AGG_TEXT=$(echo "$PAGES" | jq -r --arg sha "$HEAD_SHA" '
+            [.[]?
+              | select(.user.login | ascii_downcase | contains("coderabbit"))
+              | select(.commit_id == $sha)
+            ]
             | sort_by(.created_at)
             | unique_by(.id)
             | map(.body)
@@ -81,8 +87,13 @@ jobs:
             echo "$AGG_TEXT"
             echo "__AGG_EOF__"
           } >> $GITHUB_ENV
-          COUNT=$(echo "$PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
-          echo "Aggregated CodeRabbit inline comments on PR #${PR_NUMBER}: ${COUNT}"
+          MATCH=$(echo "$PAGES" | jq --arg sha "$HEAD_SHA" '
+            [.[]?
+              | select(.user.login | ascii_downcase | contains("coderabbit"))
+              | select(.commit_id == $sha)
+            ] | length' 2>/dev/null || echo 0)
+          echo "PR #${PR_NUMBER} HEAD=${HEAD_SHA}"
+          echo "CodeRabbit PR comments total=${TOTAL}, matching HEAD=${MATCH}"
 
       - name: Debug comment
         run: |
@@ -205,15 +216,15 @@ jobs:
             exit 0
           fi
 
-          # Prefer full PR aggregate so ClickUp gets every CodeRabbit inline comment in one post.
+          # Latest-push aggregate first; fall back to this event's review/comment body (same tip).
           SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
           if [ -z "$SOURCE_TEXT" ]; then
             SOURCE_TEXT="$COMMENT_BODY"
           fi
 
+          # Keep <details>...</details>: CodeRabbit puts "Suggested fix" / proposed diffs inside them.
           CLEAN_COMMENT=$(printf '%s\n' "$SOURCE_TEXT" \
             | sed '/<!--/,/-->/d' \
-            | sed '/<details>/,/<\/details>/d' \
             | sed '/^[[:space:]]*You are an autonomous coding agent/d' \
             | sed '/^[[:space:]]*Task:[[:space:]]*/d' \
             | sed '/^[[:space:]]*Branch:[[:space:]]*/d' \
