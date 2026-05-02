@@ -232,10 +232,11 @@ jobs:
           Branch: ${{ env.PROC_BRANCH }}"
 
           if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+            # Tag user inside the comment only; do not set root assignee (that assigns the whole task).
             BODY=$(jq -n \
               --argjson uid "$CLICKUP_MEMBER_ID" \
               --arg text "$BLOCK" \
-              '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false, assignee:$uid}')
+              '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false}')
           else
             COMMENT="@n8n
 
@@ -258,7 +259,7 @@ jobs:
           echo "ClickUp response code: $HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            echo "Rich comment failed; retrying with comment_text + assignee."
+            echo "Rich comment failed; retrying with plain comment_text (no task assignee)."
             COMMENT="@n8n
 
           $SUMMARY
@@ -268,9 +269,8 @@ jobs:
 
           # @n8n"
             BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
               --arg text "$COMMENT" \
-              '{comment_text:$text, notify_all:false, assignee:$uid}')
+              '{comment_text:$text, notify_all:false}')
             RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
               -H "Authorization: $CLICKUP_TOKEN" \
               -H "Content-Type: application/json" \
