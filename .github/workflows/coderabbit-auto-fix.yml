@@ -1,12 +1,12 @@
 name: CodeRabbit Auto Fix
 
+# Let overlapping runs finish so a fetch→ClickUp post is not killed mid-flight (duplicate posts are rarer than empty aggregates).
 concurrency:
   group: coderabbit-fix-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
+# submitted only — edited fires extra runs and can duplicate ClickUp posts without new inline threads.
 on:
-  pull_request_review_comment:
-    types: [created]
   pull_request_review:
     types: [submitted]
 
@@ -24,13 +24,11 @@ jobs:
       # Shown in ClickUp after the intro — keeps fixes in source files and leaves process.md alone.
       CLICKUP_AGENT_RULES: |
         Constraints: edit application source files directly; do not add new .md files to implement fixes.
-        Do not change process.md (reserved for automation keys). Add documentation to README.md instead of process.md.
+        Do not change process.md (reserved for automation keys). Only give code change writeups.
       # Posted to ClickUp when CodeRabbit leaves no actionable summary content or approves the PR on GitHub.
       CLICKUP_NO_IMPROVEMENTS_SUMMARY: 'Role: No improvements needed. Now the Run project'
 
-    if: |
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.user.login, 'coderabbit')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.user.login, 'coderabbit'))
+    if: contains(github.event.review.user.login, 'coderabbit')
 
     permissions:
       contents: read
@@ -43,53 +41,133 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - name: Extract CodeRabbit comment
+      - name: Extract CodeRabbit review body
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          COMMENT_JSON: ${{ toJSON(github.event.comment.body || '') }}
           REVIEW_JSON: ${{ toJSON(github.event.review.body || '') }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request_review_comment" ]; then
-            COMMENT_BODY=$(echo "$COMMENT_JSON" | jq -r .)
-          else
-            COMMENT_BODY=$(echo "$REVIEW_JSON" | jq -r .)
-          fi
+          COMMENT_BODY=$(echo "$REVIEW_JSON" | jq -r .)
 
           echo "COMMENT_BODY<<EOF" >> $GITHUB_ENV
           echo "$COMMENT_BODY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      # All inline PR review comments from CodeRabbit (one ClickUp post with full PR feedback).
-      - name: Fetch all CodeRabbit PR review comments
+      # Aggregate ONLY threads for THIS webhook + HEAD — excludes unrelated CR threads left on the same tip.
+      # Include every inline comment that belongs to this event (full batch from one CodeRabbit submission).
+      # Do NOT take newest-only (.[-1:]): same review often has multiple findings that must all post together.
+      - name: Fetch CodeRabbit PR comments for this review (HEAD-scoped)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TRIGGER_REVIEW_ID: ${{ github.event.review.id }}
+          REVIEW_SUBMITTED_AT: ${{ github.event.review.submitted_at }}
+          REVIEW_STATE: ${{ github.event.review.state }}
         run: |
           set -e
-          RAW=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null || true)
-          PAGES=$(printf '%s' "$RAW" | jq -s 'add // []' 2>/dev/null || echo '[]')
-          AGG_TEXT=$(echo "$PAGES" | jq -r '
-            [.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))]
-            | sort_by(.created_at)
-            | unique_by(.id)
-            | map(.body)
-            | join("\n\n---\n\n")
-          ' 2>/dev/null || echo '')
+          AGG_TEXT=""
+          MATCH=0
+          TOTAL=0
+
+          # Approvals often have no inline threads — exit retry loop after first fetch (see break below).
+          for attempt in 1 2 3 4 5; do
+            RAW=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null || true)
+            PAGES=$(printf '%s' "$RAW" | jq -s 'add // []' 2>/dev/null || echo '[]')
+            TOTAL=$(echo "$PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
+
+            AGG_TEXT=""
+            MATCH=0
+
+            # Tier 1: Official "comments for this review" API (avoids mismatched pull_request_review_id on combined feed).
+            if [ -n "${TRIGGER_REVIEW_ID}" ]; then
+              RAW_REV=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews/${TRIGGER_REVIEW_ID}/comments" 2>/dev/null || true)
+              REV_PAGES=$(printf '%s' "$RAW_REV" | jq -s 'add // []' 2>/dev/null || echo '[]')
+
+              AGG_TEXT=$(echo "$REV_PAGES" | jq -r --arg sha "$HEAD_SHA" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                ]
+                | sort_by(.created_at)
+                | unique_by(.id)
+                | map(.body)
+                | join("\n\n---\n\n")
+              ' 2>/dev/null || echo '')
+              MATCH=$(echo "$REV_PAGES" | jq --arg sha "$HEAD_SHA" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                ] | length' 2>/dev/null || echo 0)
+
+              if [ -z "${AGG_TEXT}" ]; then
+                AGG_TEXT=$(echo "$REV_PAGES" | jq -r '
+                  [.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))]
+                  | sort_by(.created_at)
+                  | unique_by(.id)
+                  | map(.body)
+                  | join("\n\n---\n\n")
+                ' 2>/dev/null || echo '')
+                MATCH=$(echo "$REV_PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
+              fi
+            fi
+
+            # Tier 2: Legacy combined PR comments + review id (some payloads differ).
+            if [ -z "${AGG_TEXT}" ] && [ -n "${TRIGGER_REVIEW_ID}" ]; then
+              AGG_TEXT=$(echo "$PAGES" | jq -r --arg sha "$HEAD_SHA" --arg rid "${TRIGGER_REVIEW_ID}" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                  | select((.pull_request_review_id | tostring) == $rid)
+                ]
+                | sort_by(.created_at)
+                | unique_by(.id)
+                | map(.body)
+                | join("\n\n---\n\n")
+              ' 2>/dev/null || echo '')
+              MATCH=$(echo "$PAGES" | jq --arg sha "$HEAD_SHA" --arg rid "${TRIGGER_REVIEW_ID}" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                  | select((.pull_request_review_id | tostring) == $rid)
+                ] | length' 2>/dev/null || echo 0)
+            fi
+
+            # Tier 3: Time window on combined feed (review-id linkage missing).
+            if [ -z "${AGG_TEXT}" ] && [ -n "${REVIEW_SUBMITTED_AT}" ] && [ -n "${HEAD_SHA}" ]; then
+              AGG_TEXT=$(echo "$PAGES" | jq -r --arg sha "$HEAD_SHA" --arg ts "$REVIEW_SUBMITTED_AT" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                  | select(.created_at >= $ts)
+                ]
+                | sort_by(.created_at)
+                | unique_by(.id)
+                | map(.body)
+                | join("\n\n---\n\n")
+              ' 2>/dev/null || echo '')
+              MATCH=$(echo "$PAGES" | jq --arg sha "$HEAD_SHA" --arg ts "$REVIEW_SUBMITTED_AT" '
+                [.[]?
+                  | select(.user.login | ascii_downcase | contains("coderabbit"))
+                  | select(.commit_id == $sha or .original_commit_id == $sha)
+                  | select(.created_at >= $ts)
+                ] | length' 2>/dev/null || echo 0)
+            fi
+
+            if [ "${MATCH}" != "0" ] || [ "${REVIEW_STATE}" = "approved" ]; then
+              break
+            fi
+            if [ "${attempt}" -lt 5 ]; then
+              sleep 3
+            fi
+          done
+
           {
             echo "CLICKUP_AGGREGATE_BODY<<__AGG_EOF__"
             echo "$AGG_TEXT"
             echo "__AGG_EOF__"
           } >> $GITHUB_ENV
-          COUNT=$(echo "$PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
-          echo "Aggregated CodeRabbit inline comments on PR #${PR_NUMBER}: ${COUNT}"
-
-      - name: Debug comment
-        run: |
-          echo "Detected CodeRabbit suggestion (this event):"
-          echo "$COMMENT_BODY"
-          echo "---"
-          echo "Aggregated CodeRabbit bodies length (chars): ${#CLICKUP_AGGREGATE_BODY}"
+          echo "PR #${PR_NUMBER} HEAD=${HEAD_SHA}"
+          echo "CodeRabbit PR comments total=${TOTAL}, matched this event=${MATCH}"
 
       - name: Detect CodeRabbit PR approval
         id: cu_flags
@@ -205,15 +283,15 @@ jobs:
             exit 0
           fi
 
-          # Prefer full PR aggregate so ClickUp gets every CodeRabbit inline comment in one post.
+          # Latest-push aggregate first; fall back to this event's review/comment body (same tip).
           SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
           if [ -z "$SOURCE_TEXT" ]; then
             SOURCE_TEXT="$COMMENT_BODY"
           fi
 
+          # Keep <details>...</details>: CodeRabbit puts "Suggested fix" / proposed diffs inside them.
           CLEAN_COMMENT=$(printf '%s\n' "$SOURCE_TEXT" \
             | sed '/<!--/,/-->/d' \
-            | sed '/<details>/,/<\/details>/d' \
             | sed '/^[[:space:]]*You are an autonomous coding agent/d' \
             | sed '/^[[:space:]]*Task:[[:space:]]*/d' \
             | sed '/^[[:space:]]*Branch:[[:space:]]*/d' \
