@@ -256,7 +256,7 @@ jobs:
             SOURCE_TEXT="$COMMENT_BODY"
           fi
 
-          # Strip HTML comments; normalize for ClickUp (bold section labels, no ### headings).
+          # Strip HTML comments; collapse blank lines (keep raw <details> for extraction below).
           CLEAN_COMMENT=$(printf '%s\n' "$SOURCE_TEXT" \
             | sed '/<!--/,/-->/d' \
             | sed '/^[[:space:]]*You are an autonomous coding agent/d' \
@@ -279,26 +279,71 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          # Unwrap <details>/<summary> to **Title** (ClickUp-friendly); strip blockquotes; ATX # headings -> **line**.
+          # Keep only Suggested fix + Prompt for AI Agents per issue; render as ClickUp-friendly fenced /code blocks.
+          cat > /tmp/cu_cr_clickup.pl <<'ENDPERL'
+          use strict;
+          use warnings;
+          local $/;
+          my $input = <STDIN> // '';
+          sub strip_inner_html {
+            my ($s) = @_;
+            return '' unless defined $s && $s =~ /\S/;
+            $s =~ s/\r//g;
+            $s =~ s/<\s*br\s*\/?>/\n/gi;
+            $s =~ s/<\/p>\s*/\n/gi;
+            $s =~ s/<p[^>]*>\s*//gi;
+            $s =~ s/<\/?pre>//gi;
+            $s =~ s/<\/?code[^>]*>//gi;
+            $s =~ s/<span[^>]*>//gi;
+            $s =~ s/<\/span>//gi;
+            $s =~ s/<[^>]+>//g;
+            $s =~ s/[ \t]+\n/\n/g;
+            $s =~ s/\n{3,}/\n\n/g;
+            $s =~ s/^\s+|\s+$//g;
+            return $s;
+          }
+          sub fence {
+            my ($label, $body) = @_;
+            $body = strip_inner_html($body);
+            return '' if $body eq '';
+            return '**' . $label . "**\n\n```\n" . $body . "\n```\n\n";
+          }
+          my @parts = split(/\n\n---\n\n/, $input);
+          my @blocks;
+          for my $chunk (@parts) {
+            next unless $chunk =~ /\S/;
+            my $fix = '';
+            my $prompt = '';
+            if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:Suggested\s+fix|Proposed\s+fix|Suggested\s+patch|💡\s*Proposed|🔧\s*Suggested|🐛\s*Proposed|♻️\s*Proposed)[^<]*</summary>(.*?)</details>}is) {
+              $fix = $1;
+            }
+            if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:🤖\s*)?Prompt for AI Agents[^<]*</summary>(.*?)</details>}is) {
+              $prompt = $1;
+            }
+            my $piece = '';
+            $piece .= fence('Suggested fix', $fix) if $fix ne '';
+            $piece .= fence('Prompt for AI Agents', $prompt) if $prompt ne '';
+            push @blocks, $piece if $piece =~ /\S/;
+          }
+          my $out = join("\n---\n\n", @blocks);
+          $out =~ s/\n{4,}/\n\n\n/g;
+          print $out;
+          ENDPERL
+          sed -i 's/^[[:space:]]*//' /tmp/cu_cr_clickup.pl
+
           if command -v perl >/dev/null 2>&1; then
-            CLEAN_COMMENT=$(printf '%s\n' "$CLEAN_COMMENT" | perl -0777 -pe '
-              s/<blockquote>//gi;
-              s/<\/blockquote>//gi;
-              s/<details[^>]*>\s*<summary[^>]*>([^<]+)<\/summary>\s*/\n\n**$1**\n\n/gis;
-              s/<\/details>\s*/\n\n/gis;
-              s/^(\s*)#{1,6}\s+(.+)$/$1**$2**/gm;
-              s/\n{4,}/\n\n\n/g;
-            ' 2>/dev/null || printf '%s\n' "$CLEAN_COMMENT")
+            FORMATTED=$(printf '%s\n' "$CLEAN_COMMENT" | perl /tmp/cu_cr_clickup.pl 2>/dev/null || true)
+            if [ -n "$FORMATTED" ]; then
+              CLEAN_COMMENT="$FORMATTED"
+            else
+              CLEAN_COMMENT="_No **Suggested fix** or **Prompt for AI Agents** sections were parsed from this review._"
+            fi
           fi
 
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
             SUMMARY="$CLICKUP_AGENT_PREFIX
-
-          $CLICKUP_AGENT_INTRO
-
-          $CLICKUP_AGENT_RULES
 
           **CodeRabbit Review Summary**
 
