@@ -34,8 +34,14 @@ function demoFivexxPayload(err) {
   return { error: err.message, stack: err.stack };
 }
 
+/** Smoke-only: fixed marker so tests / automation can assert this file is loaded (not wired to the app). */
+function crSmokeModuleMarker() {
+  return `reviewFlowSmoke:v${CR_ROLLING_TEST_PUSH}`;
+}
+
 module.exports = {
   resolveListenPortDemo,
   normalizeNumberDemo,
   demoFivexxPayload,
+  crSmokeModuleMarker,
 };
