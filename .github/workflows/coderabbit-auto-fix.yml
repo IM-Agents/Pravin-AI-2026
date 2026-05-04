@@ -302,14 +302,29 @@ jobs:
             $s =~ s/^\s+|\s+$//g;
             return $s;
           }
+          sub longest_backtick_run {
+            my ($s) = @_;
+            my $max = 0;
+            while ($s =~ /(`+)/g) {
+              my $n = length($1);
+              $max = $n if $n > $max;
+            }
+            return $max;
+          }
           sub fence {
             my ($label, $body) = @_;
             $body = strip_inner_html($body);
             return '' if $body eq '';
-            return '**' . $label . "**\n\n```\n" . $body . "\n```\n\n";
+            # CodeRabbit bodies often already contain ``` / ```diff fences. Nesting same-length fences
+            # breaks Markdown; outer fence must be longer than any inner run (CommonMark).
+            my $inner = longest_backtick_run($body);
+            my $n = ($inner >= 3) ? ($inner + 1) : 3;
+            my $fence = '`' x $n;
+            return '**' . $label . "**\n\n" . $fence . "\n" . $body . "\n" . $fence . "\n\n";
           }
           my @parts = split(/\n\n---\n\n/, $input);
           my @blocks;
+          my $issue = 0;
           for my $chunk (@parts) {
             next unless $chunk =~ /\S/;
             my $fix = '';
@@ -323,7 +338,10 @@ jobs:
             my $piece = '';
             $piece .= fence('Suggested fix', $fix) if $fix ne '';
             $piece .= fence('Prompt for AI Agents', $prompt) if $prompt ne '';
-            push @blocks, $piece if $piece =~ /\S/;
+            if ($piece =~ /\S/) {
+              $issue++;
+              push @blocks, "### Issue $issue\n\n" . $piece;
+            }
           }
           my $out = join("\n---\n\n", @blocks);
           $out =~ s/\n{4,}/\n\n\n/g;
