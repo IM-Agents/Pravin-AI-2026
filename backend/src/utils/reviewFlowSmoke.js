@@ -22,7 +22,7 @@ function resolveListenPortDemo(raw) {
 
 function normalizeNumberDemo(n) {
   if (!Number.isFinite(n)) {
-    const err = new Error('Result is not a finite number.');
+    const err = new Error('Result is not a finite number, is that right.');
     err.code = 'UNSUPPORTED_OPERATION';
     throw err;
   }
