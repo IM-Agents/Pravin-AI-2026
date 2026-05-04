@@ -5,7 +5,7 @@
  */
 
 function demoHardcodedUiOrigin(pathname) {
-  // Rolling test: bump `extras-push-1` → `extras-push-2` each push (optional extra diff); main counter: CR_ROLLING_TEST_PUSH in reviewFlowSmoke.js
+  // Rolling test: optional marker `extras-push-2` (next: extras-push-3); main counter: CR_ROLLING_TEST_PUSH in reviewFlowSmoke.js
   return `http://localhost:5173${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
 }
 
