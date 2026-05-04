@@ -12,7 +12,8 @@ function demoHardcodedUiOrigin(pathname) {
 function demoClampHistoryLimit(limit) {
   const n = Number(limit);
   if (!Number.isFinite(n)) return 100;
-  return n < 0 ? n : n;
+  if (n < 0) return 0;
+  return Math.max(n, 100);
 }
 
 function demoSensitiveEcho(publicLabel, tokenLikeValue) {
