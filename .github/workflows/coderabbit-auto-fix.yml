@@ -27,6 +27,9 @@ jobs:
         Do not change process.md (reserved for automation keys). Only give code change writeups.
       # Posted to ClickUp when CodeRabbit leaves no actionable summary content or approves the PR on GitHub.
       CLICKUP_NO_IMPROVEMENTS_SUMMARY: 'Role: No improvements needed. Now the Run project'
+      # Inserted after "CodeRabbit Review Summary" so assignees know how to use fenced diffs in the thread bodies.
+      CLICKUP_SUGGESTED_CODE_HINT: |
+        **Suggested code:** Use each triple-backtick diff block (often under *Proposed fix* / *Suggested fix*). Map hunks to the file paths CodeRabbit cites, apply on the PR branch, run tests. Keep edits in application source only (no new .md); do not change process.md.
 
     if: contains(github.event.review.user.login, 'coderabbit')
 
@@ -61,7 +64,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TRIGGER_REVIEW_ID: ${{ github.event.review.id }}
-          REVIEW_SUBMITTED_AT: ${{ github.event.review.submitted_at }}
           REVIEW_STATE: ${{ github.event.review.state }}
         run: |
           set -e
@@ -98,17 +100,6 @@ jobs:
                   | select(.user.login | ascii_downcase | contains("coderabbit"))
                   | select(.commit_id == $sha or .original_commit_id == $sha)
                 ] | length' 2>/dev/null || echo 0)
-
-              if [ -z "${AGG_TEXT}" ]; then
-                AGG_TEXT=$(echo "$REV_PAGES" | jq -r '
-                  [.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))]
-                  | sort_by(.created_at)
-                  | unique_by(.id)
-                  | map(.body)
-                  | join("\n\n---\n\n")
-                ' 2>/dev/null || echo '')
-                MATCH=$(echo "$REV_PAGES" | jq '[.[]? | select(.user.login | ascii_downcase | contains("coderabbit"))] | length' 2>/dev/null || echo 0)
-              fi
             fi
 
             # Tier 2: Legacy combined PR comments + review id (some payloads differ).
@@ -129,27 +120,6 @@ jobs:
                   | select(.user.login | ascii_downcase | contains("coderabbit"))
                   | select(.commit_id == $sha or .original_commit_id == $sha)
                   | select((.pull_request_review_id | tostring) == $rid)
-                ] | length' 2>/dev/null || echo 0)
-            fi
-
-            # Tier 3: Time window on combined feed (review-id linkage missing).
-            if [ -z "${AGG_TEXT}" ] && [ -n "${REVIEW_SUBMITTED_AT}" ] && [ -n "${HEAD_SHA}" ]; then
-              AGG_TEXT=$(echo "$PAGES" | jq -r --arg sha "$HEAD_SHA" --arg ts "$REVIEW_SUBMITTED_AT" '
-                [.[]?
-                  | select(.user.login | ascii_downcase | contains("coderabbit"))
-                  | select(.commit_id == $sha or .original_commit_id == $sha)
-                  | select(.created_at >= $ts)
-                ]
-                | sort_by(.created_at)
-                | unique_by(.id)
-                | map(.body)
-                | join("\n\n---\n\n")
-              ' 2>/dev/null || echo '')
-              MATCH=$(echo "$PAGES" | jq --arg sha "$HEAD_SHA" --arg ts "$REVIEW_SUBMITTED_AT" '
-                [.[]?
-                  | select(.user.login | ascii_downcase | contains("coderabbit"))
-                  | select(.commit_id == $sha or .original_commit_id == $sha)
-                  | select(.created_at >= $ts)
                 ] | length' 2>/dev/null || echo 0)
             fi
 
@@ -271,6 +241,18 @@ jobs:
           echo "Final ClickUp task id: ${TASK_ID:-<empty>}"
           echo "ClickUp assignee user id (workflow CLICKUP_ASSIGNEE_USER_ID): ${CLICKUP_ASSIGNEE_USER_ID}"
 
+      # One rolling comment per repo+task: reuse ClickUp comment id across pushes on this PR.
+      - name: Restore ClickUp rolling-comment cache
+        if: env.TASK_ID != ''
+        id: cu_rolling_comment
+        uses: actions/cache/restore@v4
+        with:
+          path: .clickup-cr-sync
+          # Unique key each run so restore falls back to restore-keys (latest prior entry for this task).
+          key: clickup-coderabbit-rolling-v1-${{ github.repository }}-task-${{ env.TASK_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            clickup-coderabbit-rolling-v1-${{ github.repository }}-task-${{ env.TASK_ID }}-
+
       - name: Post CodeRabbit suggestion to ClickUp
         if: env.TASK_ID != ''
         env:
@@ -312,6 +294,14 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
+          # Unwrap GitHub <details>/<summary> so proposed diffs read in plain ClickUp (no expand UI).
+          if command -v perl >/dev/null 2>&1; then
+            CLEAN_COMMENT=$(printf '%s\n' "$CLEAN_COMMENT" | perl -0777 -pe '
+              s/<details[^>]*>\s*<summary[^>]*>([^<]+)<\/summary>\s*/\n\n### $1\n\n/gis;
+              s/<\/details>\s*/\n\n/gis;
+            ' 2>/dev/null || printf '%s\n' "$CLEAN_COMMENT")
+          fi
+
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
@@ -323,6 +313,8 @@ jobs:
 
           CodeRabbit Review Summary
 
+          ${CLICKUP_SUGGESTED_CODE_HINT}
+
           $CLEAN_COMMENT"
           else
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
@@ -333,36 +325,76 @@ jobs:
           Task: ${{ env.PROC_TASK_URL }}
           Branch: ${{ env.PROC_BRANCH }}"
 
-          if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            # Tag user inside the comment only; do not set root assignee (that assigns the whole task).
-            BODY=$(jq -n \
-              --argjson uid "$CLICKUP_MEMBER_ID" \
-              --arg text "$BLOCK" \
-              '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false}')
-          else
-            BODY=$(jq -n --arg text "$BLOCK" '{comment_text:$text, notify_all:false}')
+          # Plain JSON for PUT (updates always use comment_text so one body can be replaced each push).
+          UPDATE_JSON=$(jq -n --arg text "$BLOCK" '{comment_text:$text, notify_all:false}')
+
+          PREV_COMMENT_ID=""
+          if [ -f .clickup-cr-sync/comment_id ]; then
+            PREV_COMMENT_ID=$(tr -d ' \r\n\t' < .clickup-cr-sync/comment_id || true)
           fi
 
-          RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
-            -H "Authorization: $CLICKUP_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$BODY")
+          HTTP_CODE=""
+          SAVED_COMMENT_ID=""
 
-          HTTP_CODE=$(echo "$RESP" | tail -n1)
+          if [ -n "$PREV_COMMENT_ID" ]; then
+            RESP=$(curl -s -w "\n%{http_code}" -X PUT "https://api.clickup.com/api/v2/comment/${PREV_COMMENT_ID}" \
+              -H "Authorization: $CLICKUP_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$UPDATE_JSON")
+            HTTP_CODE=$(echo "$RESP" | tail -n1)
+            echo "ClickUp rolling comment PUT code: $HTTP_CODE"
+            if [ "$HTTP_CODE" = "200" ]; then
+              SAVED_COMMENT_ID="$PREV_COMMENT_ID"
+            else
+              echo "ClickUp PUT failed; will create a new task comment."
+            fi
+          fi
 
-          echo "ClickUp response code: $HTTP_CODE"
+          if [ -z "$SAVED_COMMENT_ID" ]; then
+            if [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+              BODY=$(jq -n \
+                --argjson uid "$CLICKUP_MEMBER_ID" \
+                --arg text "$BLOCK" \
+                '{comment: [ {type:"tag", user:{id:$uid}}, {text: (" " + $text)} ], notify_all:false}')
+            else
+              BODY=$(jq -n --arg text "$BLOCK" '{comment_text:$text, notify_all:false}')
+            fi
 
-          if [ "$HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
-            echo "Rich comment failed; retrying with plain comment_text (no user tag)."
-            BODY=$(jq -n \
-              --arg text "$BLOCK" \
-              '{comment_text:$text, notify_all:false}')
             RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
               -H "Authorization: $CLICKUP_TOKEN" \
               -H "Content-Type: application/json" \
               -d "$BODY")
             HTTP_CODE=$(echo "$RESP" | tail -n1)
-            echo "ClickUp summary (fallback) response code: $HTTP_CODE"
+            echo "ClickUp POST response code: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" != "200" ] && [ -n "${CLICKUP_MEMBER_ID:-}" ]; then
+              echo "Rich comment failed; retrying with plain comment_text (no user tag)."
+              BODY=$(jq -n --arg text "$BLOCK" '{comment_text:$text, notify_all:false}')
+              RESP=$(curl -s -w "\n%{http_code}" -X POST "https://api.clickup.com/api/v2/task/${TASK_ID}/comment" \
+                -H "Authorization: $CLICKUP_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$BODY")
+              HTTP_CODE=$(echo "$RESP" | tail -n1)
+              echo "ClickUp POST (plain) response code: $HTTP_CODE"
+            fi
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              RESP_BODY=$(echo "$RESP" | sed '$d')
+              SAVED_COMMENT_ID=$(echo "$RESP_BODY" | jq -r '.id // empty')
+            fi
+          fi
+
+          if [ "$HTTP_CODE" = "200" ] && [ -n "$SAVED_COMMENT_ID" ]; then
+            mkdir -p .clickup-cr-sync
+            printf '%s' "$SAVED_COMMENT_ID" > .clickup-cr-sync/comment_id
+            # Immutable cache keys: only save when id is new or changed (skip after successful PUT).
+            if [ -z "$PREV_COMMENT_ID" ] || [ "$SAVED_COMMENT_ID" != "$PREV_COMMENT_ID" ]; then
+              echo "CU_CACHE_SAVE=true" >> $GITHUB_ENV
+            else
+              echo "CU_CACHE_SAVE=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "CU_CACHE_SAVE=false" >> $GITHUB_ENV
           fi
 
           if [ "$HTTP_CODE" != "200" ]; then
@@ -372,6 +404,13 @@ jobs:
               echo "::error::ClickUp returned 401 (invalid token). Update GitHub secret CLICKUP_API_KEY with a valid ClickUp API token for this workspace."
             fi
           fi
+
+      - name: Save ClickUp rolling-comment cache
+        if: env.CU_CACHE_SAVE == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .clickup-cr-sync
+          key: clickup-coderabbit-rolling-v1-${{ github.repository }}-task-${{ env.TASK_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Finish
         run: echo "Workflow completed successfully."
