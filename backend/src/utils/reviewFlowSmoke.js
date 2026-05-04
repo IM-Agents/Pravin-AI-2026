@@ -30,6 +30,12 @@ function normalizeNumberDemo(n) {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
+function demoClampPushNumber(n) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(Math.max(value, 0), 100);
+}
+
 function demoFivexxPayload(err) {
   return { error: err.message, stack: err.stack };
 }
