@@ -27,6 +27,9 @@ jobs:
         Do not change process.md (reserved for automation keys). Only give code change writeups.
       # Posted to ClickUp when CodeRabbit leaves no actionable summary content or approves the PR on GitHub.
       CLICKUP_NO_IMPROVEMENTS_SUMMARY: 'Role: No improvements needed. Now the Run project'
+      # Inserted after "CodeRabbit Review Summary" so assignees know how to use fenced diffs in the thread bodies.
+      CLICKUP_SUGGESTED_CODE_HINT: |
+        **Suggested code:** Use each triple-backtick diff block (often under *Proposed fix* / *Suggested fix*). Map hunks to the file paths CodeRabbit cites, apply on the PR branch, run tests. Keep edits in application source only (no new .md); do not change process.md.
 
     if: contains(github.event.review.user.login, 'coderabbit')
 
@@ -312,6 +315,14 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
+          # Unwrap GitHub <details>/<summary> so proposed diffs read in plain ClickUp (no expand UI).
+          if command -v perl >/dev/null 2>&1; then
+            CLEAN_COMMENT=$(printf '%s\n' "$CLEAN_COMMENT" | perl -0777 -pe '
+              s/<details[^>]*>\s*<summary[^>]*>([^<]+)<\/summary>\s*/\n\n### $1\n\n/gis;
+              s/<\/details>\s*/\n\n/gis;
+            ' 2>/dev/null || printf '%s\n' "$CLEAN_COMMENT")
+          fi
+
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
@@ -322,6 +333,8 @@ jobs:
           $CLICKUP_AGENT_RULES
 
           CodeRabbit Review Summary
+
+          ${CLICKUP_SUGGESTED_CODE_HINT}
 
           $CLEAN_COMMENT"
           else
