@@ -279,21 +279,12 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
-          # Plain labels + single fenced blocks for ClickUp (no **); HTML <details> or markdown ``` fallback (GPT-style).
+          # Keep only Suggested fix + Prompt for AI Agents per issue; render as ClickUp-friendly fenced /code blocks.
           cat > /tmp/cu_cr_clickup.pl <<'ENDPERL'
           use strict;
           use warnings;
           local $/;
           my $input = <STDIN> // '';
-
-          sub strip_md_bold {
-            my ($s) = @_;
-            return '' unless defined $s;
-            $s =~ s/\*\*([^*]*)\*\*/$1/g;
-            $s =~ s/__([^_]*)__/$1/g;
-            return $s;
-          }
-
           sub strip_inner_html {
             my ($s) = @_;
             return '' unless defined $s && $s =~ /\S/;
@@ -311,65 +302,32 @@ jobs:
             $s =~ s/^\s+|\s+$//g;
             return $s;
           }
-
-          sub dedupe_leading_fences {
-            my ($s) = @_;
-            return '' unless defined $s;
-            while ($s =~ /^\s*```\s*\n\s*```/) {
-              $s =~ s/^\s*```\s*\n\s*```\s*\n?//;
-            }
-            $s =~ s/^\s+|\s+$//g;
-            return $s;
-          }
-
-          # One ClickUp-friendly block: plain label; body already ```...``` OR wrap once in ```.
-          sub format_block {
+          sub fence {
             my ($label, $body) = @_;
             $body = strip_inner_html($body);
-            $body = dedupe_leading_fences($body);
-            $body =~ s/^\s+|\s+$//g;
             return '' if $body eq '';
-            if ($body =~ /^\s*```/) {
-              return strip_md_bold("$label\n\n$body\n\n");
-            }
-            return strip_md_bold("$label\n\n```\n$body\n```\n\n");
+            return '**' . $label . "**\n\n```\n" . $body . "\n```\n\n";
           }
-
           my @parts = split(/\n\n---\n\n/, $input);
           my @blocks;
-
           for my $chunk (@parts) {
             next unless $chunk =~ /\S/;
             my $fix = '';
             my $prompt = '';
-
             if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:Suggested\s+fix|Proposed\s+fix|Suggested\s+patch|💡\s*Proposed|🔧\s*Suggested|🐛\s*Proposed|♻️\s*Proposed)[^<]*</summary>(.*?)</details>}is) {
               $fix = $1;
             }
             if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:🤖\s*)?Prompt for AI Agents[^<]*</summary>(.*?)</details>}is) {
               $prompt = $1;
             }
-
-            if ($fix eq '') {
-              if ($chunk =~ m{(?:Suggested\s+fix|Proposed\s+fix).*?```(?:diff)?\s*\n?([\s\S]*?)```}is) {
-                $fix = $1;
-              }
-            }
-            if ($prompt eq '') {
-              if ($chunk =~ m{Prompt\s+for\s+AI\s+Agents.*?```(?:\s*\n)?([\s\S]*?)```}is) {
-                $prompt = $1;
-              }
-            }
-
             my $piece = '';
-            $piece .= format_block('Suggested fix', $fix) if $fix ne '';
-            $piece .= format_block('Prompt for AI Agents', $prompt) if $prompt ne '';
+            $piece .= fence('Suggested fix', $fix) if $fix ne '';
+            $piece .= fence('Prompt for AI Agents', $prompt) if $prompt ne '';
             push @blocks, $piece if $piece =~ /\S/;
           }
-
           my $out = join("\n---\n\n", @blocks);
           $out =~ s/\n{4,}/\n\n\n/g;
-          print strip_md_bold($out);
+          print $out;
           ENDPERL
           sed -i 's/^[[:space:]]*//' /tmp/cu_cr_clickup.pl
 
@@ -378,7 +336,7 @@ jobs:
             if [ -n "$FORMATTED" ]; then
               CLEAN_COMMENT="$FORMATTED"
             else
-              CLEAN_COMMENT="No Suggested fix or Prompt for AI Agents sections were parsed from this review."
+              CLEAN_COMMENT="_No **Suggested fix** or **Prompt for AI Agents** sections were parsed from this review._"
             fi
           fi
 
@@ -387,7 +345,7 @@ jobs:
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
             SUMMARY="$CLICKUP_AGENT_PREFIX
 
-          CodeRabbit Review Summary
+          **CodeRabbit Review Summary**
 
           $CLEAN_COMMENT"
           else
