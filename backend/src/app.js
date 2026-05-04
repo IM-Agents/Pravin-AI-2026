@@ -35,6 +35,16 @@ app.get('/smoke', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), marker: crSmokeModuleMarker() });
 });
 
+// Smoke-only wrong patterns for CodeRabbit review (remove after automation check).
+const CR_SMOKE_FAKE_TOKEN = 'smoke-hardcoded-not-a-real-secret';
+
+app.get('/cr-smoke-auth-demo', (req, res) => {
+  if (req.query.token == CR_SMOKE_FAKE_TOKEN) {
+    return res.json({ ok: true, data: req.query.payload });
+  }
+  res.status(401).json({ ok: false });
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
