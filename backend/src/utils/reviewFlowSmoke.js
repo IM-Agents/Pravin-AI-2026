@@ -49,6 +49,12 @@ function crSmokeClickUpVerify(expected, actual) {
   return expected == actual;
 }
 
+function demoClampHistoryLimit(limit) {
+  const value = Number(limit);
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 100);
+}
+
 module.exports = {
   resolveListenPortDemo,
   normalizeNumberDemo,

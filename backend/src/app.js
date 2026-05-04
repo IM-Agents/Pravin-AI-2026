@@ -24,11 +24,16 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/generated-pdfs', express.static(path.resolve(config.pdf.storagePath)));
 
+const { crSmokeModuleMarker } = require('./utils/reviewFlowSmoke');
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.use('/api', routes);
+
+app.get('/smoke', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), marker: crSmokeModuleMarker() });
+});
 
 app.use(notFoundHandler);
 app.use(errorHandler);
