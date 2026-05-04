@@ -250,10 +250,20 @@ jobs:
             exit 0
           fi
 
-          # Latest-push aggregate first; fall back to this event's review/comment body (same tip).
-          SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
-          if [ -z "$SOURCE_TEXT" ]; then
-            SOURCE_TEXT="$COMMENT_BODY"
+          # Inline aggregate + top-level review body when both exist (so no finding lives only in one side).
+          AGG="${CLICKUP_AGGREGATE_BODY:-}"
+          COM="${COMMENT_BODY:-}"
+          SOURCE_TEXT="$AGG"
+          if [ -n "$COM" ]; then
+            if [ -n "$SOURCE_TEXT" ]; then
+              SOURCE_TEXT="${SOURCE_TEXT}
+
+---
+
+${COM}"
+            else
+              SOURCE_TEXT="$COM"
+            fi
           fi
 
           # Strip HTML comments; collapse blank lines (keep raw <details> for extraction below).
@@ -335,35 +345,97 @@ jobs:
             return strip_md_bold("$label\n\n```\n$body\n```\n\n");
           }
 
+          sub flush_finding {
+            my ($fix, $prompt) = @_;
+            return '' unless ($fix ne '' || $prompt ne '');
+            my $o = '';
+            $o .= format_block('Suggested fix', $fix) if $fix ne '';
+            $o .= format_block('Prompt for AI Agents', $prompt) if $prompt ne '';
+            return $o;
+          }
+
+          sub summary_kind {
+            my ($raw) = @_;
+            return '' unless defined $raw;
+            my $s = $raw;
+            $s =~ s/<[^>]+>//g;
+            $s =~ s/\*\*//g;
+            $s =~ s/^\s+|\s+$//g;
+            return 'prompt' if $s =~ /Prompt\s+for\s+AI\s+Agents/i;
+            return 'fix' if $s =~ /Suggested\s+fix|Proposed\s+fix|Suggested\s+patch/i;
+            return 'fix' if $s =~ /💡\s*Proposed|🔧\s*Suggested|🐛\s*Proposed|♻️\s*Proposed/i;
+            return '';
+          }
+
+          sub collect_from_html {
+            my ($chunk) = @_;
+            my @events;
+            while ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>([^<]*)</summary>([\s\S]*?)</details>}gi) {
+              my $k = summary_kind($1);
+              next if $k eq '';
+              push @events, { kind => $k, body => $2 };
+            }
+            return '' unless @events;
+            my @out;
+            my $i = 0;
+            while ($i < @events) {
+              if ($events[$i]{kind} eq 'fix') {
+                my $f = $events[$i]{body};
+                my $p = '';
+                if ($i + 1 < @events && $events[$i + 1]{kind} eq 'prompt') {
+                  $p = $events[$i + 1]{body};
+                  $i += 2;
+                } else {
+                  $i += 1;
+                }
+                my $blk = flush_finding($f, $p);
+                push @out, $blk if $blk =~ /\S/;
+              } elsif ($events[$i]{kind} eq 'prompt') {
+                my $blk = flush_finding('', $events[$i]{body});
+                push @out, $blk if $blk =~ /\S/;
+                $i += 1;
+              } else {
+                $i += 1;
+              }
+            }
+            return join("\n---\n\n", grep { /\S/ } @out);
+          }
+
+          sub collect_from_md {
+            my ($chunk) = @_;
+            my @fixes;
+            while ($chunk =~ m{(?:Suggested\s+fix|Proposed\s+fix).*?```(?:diff)?\s*\n?([\s\S]*?)```}ig) {
+              push @fixes, $1;
+            }
+            my @prompts;
+            while ($chunk =~ m{Prompt\s+for\s+AI\s+Agents.*?```(?:\s*\n)?([\s\S]*?)```}ig) {
+              push @prompts, $1;
+            }
+            return '' unless @fixes || @prompts;
+            my $max = $#fixes > $#prompts ? $#fixes : $#prompts;
+            my @out;
+            for my $i (0 .. $max) {
+              my $f = $fixes[$i] // '';
+              my $p = $prompts[$i] // '';
+              my $blk = flush_finding($f, $p);
+              push @out, $blk if $blk =~ /\S/;
+            }
+            return join("\n---\n\n", grep { /\S/ } @out);
+          }
+
           my @parts = split(/\n\n---\n\n/, $input);
           my @blocks;
 
           for my $chunk (@parts) {
             next unless $chunk =~ /\S/;
-            my $fix = '';
-            my $prompt = '';
-
-            if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:Suggested\s+fix|Proposed\s+fix|Suggested\s+patch|💡\s*Proposed|🔧\s*Suggested|🐛\s*Proposed|♻️\s*Proposed)[^<]*</summary>(.*?)</details>}is) {
-              $fix = $1;
-            }
-            if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:🤖\s*)?Prompt for AI Agents[^<]*</summary>(.*?)</details>}is) {
-              $prompt = $1;
-            }
-
-            if ($fix eq '') {
-              if ($chunk =~ m{(?:Suggested\s+fix|Proposed\s+fix).*?```(?:diff)?\s*\n?([\s\S]*?)```}is) {
-                $fix = $1;
-              }
-            }
-            if ($prompt eq '') {
-              if ($chunk =~ m{Prompt\s+for\s+AI\s+Agents.*?```(?:\s*\n)?([\s\S]*?)```}is) {
-                $prompt = $1;
-              }
-            }
-
             my $piece = '';
-            $piece .= format_block('Suggested fix', $fix) if $fix ne '';
-            $piece .= format_block('Prompt for AI Agents', $prompt) if $prompt ne '';
+            if ($chunk =~ /<details/i) {
+              $piece = collect_from_html($chunk);
+            }
+            if ($piece !~ /\S/) {
+              my $md = collect_from_md($chunk);
+              $piece = $md if $md =~ /\S/;
+            }
             push @blocks, $piece if $piece =~ /\S/;
           }
 
