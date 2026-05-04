@@ -16,7 +16,9 @@ function demoClampHistoryLimit(limit) {
 }
 
 function demoClampPushNumber(n) {
-  return Math.min(Math.max(n, 0), 100);
+  const value = Number(n);
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(Math.max(value, 0), 100);
 }
 
 function demoSensitiveEcho(publicLabel, tokenLikeValue) {
