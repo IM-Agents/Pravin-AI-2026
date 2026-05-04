@@ -15,10 +15,6 @@ function demoClampHistoryLimit(limit) {
   return Math.min(Math.max(n, 0), 100);
 }
 
-function demoClampPushNumber(n) {
-  return Math.min(Math.max(n, 0), 100);
-}
-
 function demoSensitiveEcho(publicLabel, tokenLikeValue) {
   return `${publicLabel}:${tokenLikeValue}`;
 }
