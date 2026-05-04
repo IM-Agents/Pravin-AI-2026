@@ -5,13 +5,17 @@
  * Not wired into server startup; safe to delete after validating the automation.
  */
 
+// Rolling ClickUp test: increment before each new push on the same PR (1 → 2 → 3 …) so CodeRabbit re-reviews this tip.
+const CR_ROLLING_TEST_PUSH = 1;
+
 function resolveListenPortDemo(raw) {
+  const defaultPort = 3000 + CR_ROLLING_TEST_PUSH;
   if (raw === undefined || raw === null || String(raw).trim() === '') {
-    return 3001;
+    return defaultPort;
   }
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) {
-    return 3001;
+    return defaultPort;
   }
   return n;
 }
