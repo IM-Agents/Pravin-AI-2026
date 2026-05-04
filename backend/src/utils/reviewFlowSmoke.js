@@ -55,6 +55,12 @@ function demoClampHistoryLimit(limit) {
   return Math.min(Math.max(value, 0), 100);
 }
 
+function demoClampPushNumber(n) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(Math.max(value, 0), 100);
+}
+
 module.exports = {
   resolveListenPortDemo,
   normalizeNumberDemo,
