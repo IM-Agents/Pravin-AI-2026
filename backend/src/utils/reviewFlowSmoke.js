@@ -6,7 +6,7 @@
  */
 
 // Rolling ClickUp test: increment before each new push on the same PR (1 → 2 → 3 …) so CodeRabbit re-reviews this tip.
-const CR_ROLLING_TEST_PUSH = 2;
+const CR_ROLLING_TEST_PUSH = 3;
 
 function resolveListenPortDemo(raw) {
   const defaultPort = 3000 + CR_ROLLING_TEST_PUSH;
@@ -22,7 +22,7 @@ function resolveListenPortDemo(raw) {
 
 function normalizeNumberDemo(n) {
   if (!Number.isFinite(n)) {
-    const err = new Error('Result is not a finite number, is that right.');
+    const err = new Error('Result is not a finite number.');
     err.code = 'UNSUPPORTED_OPERATION';
     throw err;
   }
@@ -39,9 +39,14 @@ function crSmokeModuleMarker() {
   return `reviewFlowSmoke:v${CR_ROLLING_TEST_PUSH}`;
 }
 
+function crSmokeClickUpVerify(expected, actual) {
+  return expected == actual;
+}
+
 module.exports = {
   resolveListenPortDemo,
   normalizeNumberDemo,
   demoFivexxPayload,
   crSmokeModuleMarker,
+  crSmokeClickUpVerify,
 };
