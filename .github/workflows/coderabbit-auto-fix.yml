@@ -281,6 +281,9 @@ jobs:
                      /^[[:space:]]*\n[[:space:]]*$/D
                    }')
 
+          DETAILS_MARKERS=$(printf '%s\n' "$CLEAN_COMMENT" | grep -cEi '<summary[^>]*>[^<]*(Suggested|Proposed|Prompt for AI Agents)' || true)
+          MARKDOWN_PROMPT_BLOCKS=$(printf '%s\n' "$CLEAN_COMMENT" | grep -cE 'Prompt for AI Agents' || true)
+
           # Keep only Suggested fix + Prompt for AI Agents per issue; render as ClickUp-friendly fenced /code blocks.
           cat > /tmp/cu_cr_clickup.pl <<'ENDPERL'
           use strict;
@@ -327,8 +330,11 @@ jobs:
           my @parts = split(/\n\n---\n\n/, $input);
           my @blocks;
           my $issue = 0;
+          my $total_chunks = 0;
+          my $fallback_chunks = 0;
           for my $chunk (@parts) {
             next unless $chunk =~ /\S/;
+            $total_chunks++;
             my $fix = '';
             my $prompt = '';
             if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:Suggested\s+fix|Proposed\s+fix|Suggested\s+patch|💡\s*Proposed|🔧\s*Suggested|🐛\s*Proposed|♻️\s*Proposed)[^<]*</summary>(.*?)</details>}is) {
@@ -337,9 +343,23 @@ jobs:
             if ($chunk =~ m{<details[^>]*>\s*<summary[^>]*>[^<]*(?:🤖\s*)?Prompt for AI Agents[^<]*</summary>(.*?)</details>}is) {
               $prompt = $1;
             }
+            # Fallback for markdown-only bodies (no <details>/<summary> wrapper).
+            if ($fix eq '' && $chunk =~ m{(?:^|\n)\h*(?:🛠️|💡|🔧|🐛|♻️)?\h*(?:Proposed|Suggested)\h+(?:fix|patch)\h*\n+\h*```(?:diff)?\n(.*?)\n\h*```}is) {
+              $fix = $1;
+            }
+            if ($prompt eq '' && $chunk =~ m{(?:^|\n)\h*(?:🤖\h*)?Prompt for AI Agents\h*\n+\h*```\n(.*?)\n\h*```}is) {
+              $prompt = $1;
+            }
             my $piece = '';
             $piece .= fence('Suggested fix', $fix) if $fix ne '';
             $piece .= fence('Prompt for AI Agents', $prompt) if $prompt ne '';
+            if ($piece !~ /\S/) {
+              my $raw = strip_inner_html($chunk);
+              if ($raw ne '') {
+                $fallback_chunks++;
+                $piece .= fence('Review note (raw fallback)', $raw);
+              }
+            }
             if ($piece =~ /\S/) {
               $issue++;
               push @blocks, "### Issue $issue\n\n" . $piece;
@@ -347,6 +367,8 @@ jobs:
           }
           my $out = join("\n---\n\n", @blocks);
           $out =~ s/\n{4,}/\n\n\n/g;
+          my $meta = "__PARSER_META__ total_chunks=$total_chunks fallback_chunks=$fallback_chunks issue_count=$issue";
+          print $meta . "\n";
           print $out;
           ENDPERL
           sed -i 's/^[[:space:]]*//' /tmp/cu_cr_clickup.pl
@@ -360,16 +382,23 @@ jobs:
             fi
           fi
 
+          PARSER_META=$(printf '%s\n' "$CLEAN_COMMENT" | grep -m1 '^__PARSER_META__' || true)
+          if [ -n "$PARSER_META" ]; then
+            CLEAN_COMMENT=$(printf '%s\n' "$CLEAN_COMMENT" | sed '/^__PARSER_META__/d')
+          fi
+
           ISSUE_COUNT=$(printf '%s\n' "$CLEAN_COMMENT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
           echo "issue_count=${ISSUE_COUNT}" >> "$GITHUB_OUTPUT"
           echo "Formatted ClickUp payload: ${ISSUE_COUNT} issue block(s) (### Issue headings)."
-
           {
             echo "## CodeRabbit → ClickUp"
             echo ""
             echo "| Metric | Value |"
             echo "|--------|-------|"
             echo "| CodeRabbit PR comments matched (this review) | ${CLICKUP_MATCH_COUNT:-0} |"
+            echo "| `<summary...>` markers in source text | ${DETAILS_MARKERS:-0} |"
+            echo "| `Prompt for AI Agents` mentions in source text | ${MARKDOWN_PROMPT_BLOCKS:-0} |"
+            echo "| Parser meta | ${PARSER_META:-n/a} |"
             echo "| Issues formatted for ClickUp (\`### Issue N\`) | ${ISSUE_COUNT} |"
             echo ""
             echo "Multiple findings from one CodeRabbit submission should appear as separate \`### Issue 1\`, \`### Issue 2\`, … in a single task comment."
