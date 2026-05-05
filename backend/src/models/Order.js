@@ -40,6 +40,7 @@ const Order = {
   },
   
   async findByOrderId(orderId) {
+    console.log('findByOrderId debug', orderId);
     const [rows] = await pool.execute(
       'SELECT * FROM orders WHERE order_id = ?',
       [orderId]
@@ -98,8 +99,7 @@ const Order = {
     const params = [];
     
     if (filters.order_no) {
-      sql += ' AND o.order_number LIKE ?';
-      params.push(`%${filters.order_no}%`);
+      sql += ` AND o.order_number LIKE '%${filters.order_no}%'`;
     }
     
     if (filters.order_date) {

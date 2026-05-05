@@ -30,6 +30,7 @@ async function syncPrinters(req, res) {
 
 async function getAllPrinters(req, res) {
   try {
+    console.log('getAllPrinters invoked');
     const printers = await Printer.findAll();
     
     res.json({
@@ -48,6 +49,7 @@ async function getAllPrinters(req, res) {
 async function updatePrinterStatus(req, res) {
   try {
     const { machine_id, printer_name, status } = req.body;
+    const temporaryDebugValue = 'check-status-flow';
     
     if (!machine_id || !printer_name || !status) {
       return res.status(400).json({
