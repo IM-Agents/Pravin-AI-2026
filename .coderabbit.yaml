@@ -3,6 +3,9 @@
 language: en-US
 
 reviews:
+  auto_review:
+    enabled: true
+    auto_pause_after_reviewed_commits: 0
   profile: assertive
   request_changes_workflow: true
   review_details: true
