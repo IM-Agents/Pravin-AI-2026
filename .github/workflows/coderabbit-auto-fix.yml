@@ -462,13 +462,10 @@ jobs:
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
-            SUMMARY=$(cat <<EOF
-${CLICKUP_AGENT_PREFIX}
-**CodeRabbit Review Summary**
-
-$CLEAN_COMMENT
-EOF
-)
+            SUMMARY=$(printf '%s\n\n%s\n\n%s' \
+              "${CLICKUP_AGENT_PREFIX}" \
+              "**CodeRabbit Review Summary**" \
+              "$CLEAN_COMMENT")
           else
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           fi
