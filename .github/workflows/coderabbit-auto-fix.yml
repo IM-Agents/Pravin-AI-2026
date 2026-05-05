@@ -336,6 +336,30 @@ jobs:
             $s =~ s/^\s+|\s+$//g;
             return $s;
           }
+          sub normalize_markdown_fences {
+            my ($s) = @_;
+            return '' unless defined $s && $s =~ /\S/;
+            $s =~ s/\r//g;
+            $s =~ s/^\s+|\s+$//g;
+            my $guard = 0;
+            while ($guard++ < 5) {
+              if ($s =~ /\A(`{3,})[^\n]*\n(.*)\n\1\h*\z/s) {
+                $s = $2;
+                $s =~ s/^\s+|\s+$//g;
+                next;
+              }
+              last;
+            }
+            # If extraction grabbed a wrapper from the middle of a backtick run, remove orphan fence lines.
+            if ($s =~ /\A`{3,}[^\n]*\n/s && $s !~ /\n`{3,}\h*\z/s) {
+              $s =~ s/\A`{3,}[^\n]*\n//s;
+            }
+            if ($s !~ /\A`{3,}[^\n]*\n/s && $s =~ /\n`{3,}\h*\z/s) {
+              $s =~ s/\n`{3,}\h*\z//s;
+            }
+            $s =~ s/^\s+|\s+$//g;
+            return $s;
+          }
           sub longest_backtick_run {
             my ($s) = @_;
             my $max = 0;
@@ -348,6 +372,7 @@ jobs:
           sub fence {
             my ($label, $body) = @_;
             $body = strip_inner_html($body);
+            $body = normalize_markdown_fences($body);
             return '' if $body eq '';
             # CodeRabbit bodies often already contain ``` / ```diff fences. Nesting same-length fences
             # breaks Markdown; outer fence must be longer than any inner run (CommonMark).
@@ -360,7 +385,6 @@ jobs:
           my @blocks;
           my $issue = 0;
           my $total_chunks = 0;
-          my $fallback_chunks = 0;
           for my $chunk (@parts) {
             next unless $chunk =~ /\S/;
             $total_chunks++;
@@ -373,22 +397,15 @@ jobs:
               $prompt = $1;
             }
             # Fallback for markdown-only bodies (no <details>/<summary> wrapper).
-            if ($fix eq '' && $chunk =~ m{(?:^|\n)\h*(?:🛠️|💡|🔧|🐛|♻️)?\h*(?:Proposed|Suggested)\h+(?:fix|patch)\h*\n+\h*```(?:diff)?\n(.*?)\n\h*```}is) {
+            if ($fix eq '' && $chunk =~ m{(?:^|\n)\h*(?:🛠️|💡|🔧|🐛|♻️)?\h*(?:Proposed|Suggested)\h+(?:fix|patch)\h*\n+\h*(?:`{4,}\h*\n\h*)?```(?:diff)?\n(.*?)\n\h*```(?:\h*\n\h*`{4,})?}is) {
               $fix = $1;
             }
-            if ($prompt eq '' && $chunk =~ m{(?:^|\n)\h*(?:🤖\h*)?Prompt for AI Agents\h*\n+\h*```\n(.*?)\n\h*```}is) {
+            if ($prompt eq '' && $chunk =~ m{(?:^|\n)\h*(?:🤖\h*)?Prompt for AI Agents\h*\n+\h*(?:`{4,}\h*\n\h*)?```\n(.*?)\n\h*```(?:\h*\n\h*`{4,})?}is) {
               $prompt = $1;
             }
             my $piece = '';
             $piece .= fence('Suggested fix', $fix) if $fix ne '';
             $piece .= fence('Prompt for AI Agents', $prompt) if $prompt ne '';
-            if ($piece !~ /\S/) {
-              my $raw = strip_inner_html($chunk);
-              if ($raw ne '') {
-                $fallback_chunks++;
-                $piece .= fence('Review note (raw fallback)', $raw);
-              }
-            }
             if ($piece =~ /\S/) {
               $issue++;
               push @blocks, "### Issue $issue\n\n" . $piece;
@@ -396,7 +413,7 @@ jobs:
           }
           my $out = join("\n---\n\n", @blocks);
           $out =~ s/\n{4,}/\n\n\n/g;
-          my $meta = "__PARSER_META__ total_chunks=$total_chunks fallback_chunks=$fallback_chunks issue_count=$issue";
+          my $meta = "__PARSER_META__ total_chunks=$total_chunks issue_count=$issue";
           print $meta . "\n";
           print $out;
           ENDPERL
@@ -407,7 +424,7 @@ jobs:
             if [ -n "$FORMATTED" ]; then
               CLEAN_COMMENT="$FORMATTED"
             else
-              CLEAN_COMMENT="_No **Suggested fix** or **Prompt for AI Agents** sections were parsed from this review._"
+              CLEAN_COMMENT=""
             fi
           fi
 
@@ -419,25 +436,7 @@ jobs:
           ISSUE_COUNT=$(printf '%s\n' "$CLEAN_COMMENT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
           MATCHED_COUNT="${CLICKUP_MATCH_COUNT:-0}"
           if [ "${ISSUE_COUNT}" -lt "${MATCHED_COUNT}" ]; then
-            MISSING=$((MATCHED_COUNT - ISSUE_COUNT))
-            echo "::warning::Parsed issue blocks (${ISSUE_COUNT}) are less than matched actionable comments (${MATCHED_COUNT}); adding ${MISSING} fallback block(s)."
-            REVIEW_ID="${{ github.event.review.id }}"
-            for i in $(seq 1 "${MISSING}"); do
-              NEXT_NUM=$((ISSUE_COUNT + i))
-              CLEAN_COMMENT="${CLEAN_COMMENT}
-
-              ---
-
-              ### Issue ${NEXT_NUM}
-
-              **Review note (count guard)**
-
-              \`\`\`
-              An actionable CodeRabbit inline comment was matched but could not be structured into Suggested fix / Prompt blocks.
-              Please review PR inline comments for review id ${REVIEW_ID}.
-              \`\`\`"
-            done
-            ISSUE_COUNT="${MATCHED_COUNT}"
+            echo "::warning::Parsed issue blocks (${ISSUE_COUNT}) are less than matched actionable comments (${MATCHED_COUNT}); posting only parsed Suggested fix / Prompt blocks."
           fi
           echo "issue_count=${ISSUE_COUNT}" >> "$GITHUB_OUTPUT"
           echo "Formatted ClickUp payload: ${ISSUE_COUNT} issue block(s) (### Issue headings)."
@@ -463,11 +462,7 @@ jobs:
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
-            SUMMARY="$CLICKUP_AGENT_PREFIX
-
-          **CodeRabbit Review Summary**
-
-          $CLEAN_COMMENT"
+            SUMMARY="$CLEAN_COMMENT"
           else
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           fi
