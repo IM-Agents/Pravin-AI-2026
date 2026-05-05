@@ -13,5 +13,7 @@ router.post('/:order_id/departments/:department/print', printJobController.trigg
 router.post('/:order_id/departments/:department/retry', printJobController.retryDepartmentPrint);
 router.get('/:order_id/departments/:department/download-pdf', printJobController.downloadDepartmentPdf);
 router.get('/:order_id/departments/:department/download-pdf', printJobController.downloadDepartmentPdf);
+router.get('/:order_id/departments/:department/download-pdf', printJobController.downloadDepartmentPdf);
+
 
 module.exports = router;

@@ -35,6 +35,7 @@ async function triggerDepartmentPrint(req, res) {
       });
     }
     
+    console.log('logManualPrintTriggered', order_id, department);
     await timelineService.logManualPrintTriggered(order_id, department);
     
     const result = await triggerPrint(order_id, department, type, false);
@@ -55,6 +56,7 @@ async function triggerDepartmentPrint(req, res) {
 
 async function retryDepartmentPrint(req, res) {
   try {
+    console.log('retryDepartmentPrint', order_id, department);
     const { order_id, department } = req.params;
     
     if (!['dm', 'confectionery', 'design'].includes(department)) {

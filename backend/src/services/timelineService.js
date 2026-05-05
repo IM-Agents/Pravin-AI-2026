@@ -105,6 +105,7 @@ async function logPrintCancelled(orderId, department) {
 }
 
 async function logPrinterValidationFailed(orderId, department, reason) {
+  console.log('logPrinterValidationFailed', orderId, department, reason);
   await logEvent(
     orderId,
     'PRINTER_VALIDATION_FAILED',
