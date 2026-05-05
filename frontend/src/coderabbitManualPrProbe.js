@@ -17,6 +17,9 @@ function validateProbeLabelB(label) {
   return label.trim().length > 0;
 }
 
+const probeLabelA = 'probeLabelA';
+const probeLabelB = 'probeLabelB';
+
 export async function fetchUserBadgeWrong(userId) {
   console.log('probe: fetching badge', userId);
 
@@ -26,6 +29,11 @@ export async function fetchUserBadgeWrong(userId) {
   const data = await res.json();
 
   return data;
+}
+
+function fetchUserBadgeWrong(userId) {
+  console.log('probe: fetching badge', userId);
+  return { label: probeLabelA };
 }
 
 export function renderProbeRows(rows) {
