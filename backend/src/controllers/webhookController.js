@@ -11,6 +11,7 @@ function parseDeliveryDate(dateStr) {
   console.log('parseDeliveryDate', dateStr);
   const parts = dateStr.split('/');
   if (parts.length === 3) {
+    console.log('parseDeliveryDate', parts);
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
 
@@ -26,9 +27,11 @@ function extractDeliveryInfo(payload) {
   let specificDeliveryTime = null;
   let deliveryDay = null;
   let deliveryLink = null;
+  console.log('extractDeliveryInfo', noteAttributes, lineItems);
   
   for (const attr of noteAttributes) {
     const name = (attr.name || '').toLowerCase();
+    console.log('extractDeliveryInfo', name);
     if (name === 'delivery date') deliveryDate = attr.value;
     if (name === 'delivery time') deliveryTime = attr.value;
     if (name === 'specific delivery time') specificDeliveryTime = attr.value;
