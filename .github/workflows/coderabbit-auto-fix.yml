@@ -16,6 +16,7 @@ jobs:
     # Prepended to every ClickUp task comment (not stored in process.md).
     # General docs belong in README.md — process.md is only for automation keys (branch, clickup_task).
     env:
+      # Optional PR testing (repo Variables → Actions): CLICKUP_EXPECT_MIN_ISSUES=2; CLICKUP_VERIFY_CLICKUP_COMMENT=true (GET-after-POST check).
       # ClickUp member id for rich comment @mention (optional; workspace user id).
       CLICKUP_ASSIGNEE_USER_ID: '101032796'
       # First line of ClickUp body text; assignee @mention comes from CLICKUP_ASSIGNEE_USER_ID (rich comment tag), not this string.
@@ -135,6 +136,7 @@ jobs:
           } >> $GITHUB_ENV
           echo "PR #${PR_NUMBER} HEAD=${HEAD_SHA}"
           echo "CodeRabbit PR comments total=${TOTAL}, matched this event=${MATCH}"
+          echo "CLICKUP_MATCH_COUNT=${MATCH}" >> "$GITHUB_ENV"
 
       - name: Detect CodeRabbit PR approval
         id: cu_flags
@@ -239,16 +241,16 @@ jobs:
           echo "ClickUp assignee user id (workflow CLICKUP_ASSIGNEE_USER_ID): ${CLICKUP_ASSIGNEE_USER_ID}"
 
       - name: Post CodeRabbit suggestion to ClickUp
+        id: clickup_post
         if: env.TASK_ID != ''
         env:
           CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
           IS_CODERABBIT_APPROVAL: ${{ steps.cu_flags.outputs.coderabbit_approval }}
         run: |
+          echo "posted=false" >> "$GITHUB_OUTPUT"
+          echo "issue_count=0" >> "$GITHUB_OUTPUT"
+
           CLICKUP_TOKEN=$(printf '%s' "${CLICKUP_API_KEY:-}" | tr -d '\r\n' | xargs)
-          if [ -z "$CLICKUP_TOKEN" ]; then
-            echo "::warning::CLICKUP_API_KEY is missing/empty after trim. Skipping ClickUp comment."
-            exit 0
-          fi
 
           # Latest-push aggregate first; fall back to this event's review/comment body (same tip).
           SOURCE_TEXT="${CLICKUP_AGGREGATE_BODY:-$COMMENT_BODY}"
@@ -358,6 +360,26 @@ jobs:
             fi
           fi
 
+          ISSUE_COUNT=$(printf '%s\n' "$CLEAN_COMMENT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
+          echo "issue_count=${ISSUE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Formatted ClickUp payload: ${ISSUE_COUNT} issue block(s) (### Issue headings)."
+
+          {
+            echo "## CodeRabbit → ClickUp"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| CodeRabbit PR comments matched (this review) | ${CLICKUP_MATCH_COUNT:-0} |"
+            echo "| Issues formatted for ClickUp (\`### Issue N\`) | ${ISSUE_COUNT} |"
+            echo ""
+            echo "Multiple findings from one CodeRabbit submission should appear as separate \`### Issue 1\`, \`### Issue 2\`, … in a single task comment."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ -z "$CLICKUP_TOKEN" ]; then
+            echo "::warning::CLICKUP_API_KEY is missing/empty after trim. Skipping ClickUp comment."
+            exit 0
+          fi
+
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
@@ -409,7 +431,70 @@ jobs:
             if [ "$HTTP_CODE" = "401" ]; then
               echo "::error::ClickUp returned 401 (invalid token). Update GitHub secret CLICKUP_API_KEY with a valid ClickUp API token for this workspace."
             fi
+          else
+            echo "posted=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Enforce minimum formatted issues (optional)
+        if: >-
+          success() && env.TASK_ID != '' &&
+          vars.CLICKUP_EXPECT_MIN_ISSUES != ''
+        env:
+          MIN_ISSUES: ${{ vars.CLICKUP_EXPECT_MIN_ISSUES }}
+          COUNT: ${{ steps.clickup_post.outputs.issue_count }}
+        run: |
+          set -e
+          MIN=$(printf '%s' "${MIN_ISSUES:-}" | tr -d '\r\n\t ' | grep -E '^[0-9]+$' || true)
+          if [ -z "$MIN" ]; then
+            echo "::warning::CLICKUP_EXPECT_MIN_ISSUES is set but not a positive integer; skipping enforcement."
+            exit 0
+          fi
+          CNT="${COUNT:-0}"
+          echo "Checking formatted issue count ($CNT) >= minimum ($MIN) [repo variable CLICKUP_EXPECT_MIN_ISSUES]."
+          if [ "$CNT" -lt "$MIN" ]; then
+            echo "::error::Expected at least $MIN CodeRabbit issue block(s) in the ClickUp payload, got $CNT. Fix parsing or trigger a review with more inline findings."
+            exit 1
+          fi
+
+      - name: Verify latest ClickUp comment (optional)
+        if: >-
+          success() && env.TASK_ID != '' &&
+          vars.CLICKUP_VERIFY_CLICKUP_COMMENT == 'true' &&
+          steps.clickup_post.outputs.posted == 'true'
+        env:
+          CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
+          EXPECT_ISSUES: ${{ steps.clickup_post.outputs.issue_count }}
+          TASK_ID: ${{ env.TASK_ID }}
+        run: |
+          set -e
+          TOKEN=$(printf '%s' "${CLICKUP_API_KEY:-}" | tr -d '\r\n' | xargs)
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CLICKUP_API_KEY missing; cannot verify ClickUp comment."
+            exit 0
+          fi
+          EXP="${EXPECT_ISSUES:-0}"
+          if [ "$EXP" -lt 1 ]; then
+            echo "Skipping GET verify (no \`### Issue N\` blocks in payload — approval or empty parse)."
+            exit 0
+          fi
+
+          sleep 2
+          JSON=$(curl -s -S -H "Authorization: $TOKEN" \
+            "https://api.clickup.com/api/v2/task/${TASK_ID}/comment")
+
+          TEXT=$(printf '%s' "$JSON" | jq -r '.comments[0].comment_text // empty' 2>/dev/null || echo '')
+          if [ -z "$TEXT" ]; then
+            TEXT=$(printf '%s' "$JSON" | jq -r '[.comments[0].comment[]? | .text // empty] | join("")' 2>/dev/null || echo '')
+          fi
+
+          FOUND=$(printf '%s' "$TEXT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
+          echo "Latest task comment: found ${FOUND} '\`### Issue N\`' heading(s); payload had ${EXP}."
+
+          if [ "$FOUND" != "$EXP" ]; then
+            echo "::error::ClickUp GET verify failed: expected ${EXP} issue heading(s) in newest comment, found ${FOUND}. Open the task and confirm rich-comment formatting."
+            exit 1
+          fi
+          echo "ClickUp GET verify passed — newest comment matches formatted issue count."
 
       - name: Finish
         run: echo "Workflow completed successfully."
