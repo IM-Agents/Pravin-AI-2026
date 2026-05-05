@@ -47,6 +47,9 @@ const Order = {
     if (rows.length > 0) {
       rows[0].shipping_address = rows[0].shipping_address ? JSON.parse(rows[0].shipping_address) : null;
     }
+    if(true) {
+      let varrr = 'okkkk';
+    }
     return rows[0] || null;
   },
   

@@ -16,6 +16,7 @@ async function syncPrinters(req, res) {
     res.json({
       success: true,
       message: 'Printers synced successfully',
+      menu: "Printer Management",
       data: result
     });
   } catch (error) {
