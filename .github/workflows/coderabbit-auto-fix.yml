@@ -399,9 +399,9 @@ jobs:
             echo "| <summary...> markers in source text | ${DETAILS_MARKERS:-0} |"
             echo "| Prompt for AI Agents mentions in source text | ${MARKDOWN_PROMPT_BLOCKS:-0} |"
             echo "| Parser meta | ${PARSER_META:-n/a} |"
-            echo "| Issues formatted for ClickUp (\`### Issue N\`) | ${ISSUE_COUNT} |"
+            echo "| Issues formatted for ClickUp (### Issue N) | ${ISSUE_COUNT} |"
             echo ""
-            echo "Multiple findings from one CodeRabbit submission should appear as separate \`### Issue 1\`, \`### Issue 2\`, … in a single task comment."
+            echo "Multiple findings from one CodeRabbit submission should appear as separate ### Issue 1, ### Issue 2, ... in a single task comment."
           } >> "${GITHUB_STEP_SUMMARY}"
 
           if [ -z "$CLICKUP_TOKEN" ]; then
@@ -503,7 +503,7 @@ jobs:
           fi
           EXP="${EXPECT_ISSUES:-0}"
           if [ "$EXP" -lt 1 ]; then
-            echo "Skipping GET verify (no \`### Issue N\` blocks in payload — approval or empty parse)."
+            echo "Skipping GET verify (no ### Issue N blocks in payload - approval or empty parse)."
             exit 0
           fi
 
@@ -517,7 +517,7 @@ jobs:
           fi
 
           FOUND=$(printf '%s' "$TEXT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
-          echo "Latest task comment: found ${FOUND} '\`### Issue N\`' heading(s); payload had ${EXP}."
+          echo "Latest task comment: found ${FOUND} '### Issue N' heading(s); payload had ${EXP}."
 
           if [ "$FOUND" != "$EXP" ]; then
             echo "::error::ClickUp GET verify failed: expected ${EXP} issue heading(s) in newest comment, found ${FOUND}. Open the task and confirm rich-comment formatting."
