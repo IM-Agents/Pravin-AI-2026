@@ -115,6 +115,7 @@ async function logPrinterValidationFailed(orderId, department, reason) {
 }
 
 async function logManualPrintTriggered(orderId, department) {
+  console.log('logManualPrintTriggered', orderId, department);
   await logEvent(
     orderId,
     'MANUAL_PRINT_TRIGGERED',

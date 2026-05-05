@@ -68,6 +68,10 @@ jobs:
           AGG_TEXT=""
           MATCH=0
           TOTAL=0
+          PREV_MATCH=-1
+          STABLE_HITS=0
+          BEST_MATCH=0
+          BEST_AGG=""
 
           # Approvals often have no inline threads — exit retry loop after first fetch (see break below).
           for attempt in 1 2 3 4 5; do
@@ -121,13 +125,38 @@ jobs:
                 ] | length' 2>/dev/null || echo 0)
             fi
 
-            if [ "${MATCH}" != "0" ] || [ "${REVIEW_STATE}" = "approved" ]; then
+            # Keep the highest observed match during eventual-consistency windows.
+            if [ "${MATCH}" -gt "${BEST_MATCH}" ]; then
+              BEST_MATCH="${MATCH}"
+              BEST_AGG="${AGG_TEXT}"
+            fi
+
+            # Approvals often have no inline comments; no need to keep polling.
+            if [ "${REVIEW_STATE}" = "approved" ]; then
               break
             fi
+
+            # Wait for a stable non-zero count across consecutive polls.
+            if [ "${MATCH}" = "${PREV_MATCH}" ] && [ "${MATCH}" != "0" ]; then
+              STABLE_HITS=$((STABLE_HITS + 1))
+            else
+              STABLE_HITS=0
+            fi
+            PREV_MATCH="${MATCH}"
+
+            if [ "${STABLE_HITS}" -ge 1 ]; then
+              break
+            fi
+
             if [ "${attempt}" -lt 5 ]; then
               sleep 3
             fi
           done
+
+          if [ "${BEST_MATCH}" -gt "${MATCH}" ]; then
+            MATCH="${BEST_MATCH}"
+            AGG_TEXT="${BEST_AGG}"
+          fi
 
           {
             echo "CLICKUP_AGGREGATE_BODY<<__AGG_EOF__"
@@ -388,6 +417,28 @@ jobs:
           fi
 
           ISSUE_COUNT=$(printf '%s\n' "$CLEAN_COMMENT" | grep -oE '### Issue [0-9]+' | wc -l | tr -d '[:space:]')
+          MATCHED_COUNT="${CLICKUP_MATCH_COUNT:-0}"
+          if [ "${ISSUE_COUNT}" -lt "${MATCHED_COUNT}" ]; then
+            MISSING=$((MATCHED_COUNT - ISSUE_COUNT))
+            echo "::warning::Parsed issue blocks (${ISSUE_COUNT}) are less than matched actionable comments (${MATCHED_COUNT}); adding ${MISSING} fallback block(s)."
+            REVIEW_ID="${{ github.event.review.id }}"
+            for i in $(seq 1 "${MISSING}"); do
+              NEXT_NUM=$((ISSUE_COUNT + i))
+              CLEAN_COMMENT="${CLEAN_COMMENT}
+
+              ---
+
+              ### Issue ${NEXT_NUM}
+
+              **Review note (count guard)**
+
+              \`\`\`
+              An actionable CodeRabbit inline comment was matched but could not be structured into Suggested fix / Prompt blocks.
+              Please review PR inline comments for review id ${REVIEW_ID}.
+              \`\`\`"
+            done
+            ISSUE_COUNT="${MATCHED_COUNT}"
+          fi
           echo "issue_count=${ISSUE_COUNT}" >> "$GITHUB_OUTPUT"
           echo "Formatted ClickUp payload: ${ISSUE_COUNT} issue block(s) (### Issue headings)."
           {

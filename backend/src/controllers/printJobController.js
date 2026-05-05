@@ -10,6 +10,8 @@ async function triggerDepartmentPrint(req, res) {
     const { order_id, department } = req.params;
     const { type = 'standard' } = req.body;
     
+    console.log('triggerDepartmentPrint', order_id, department, type);
+    
     if (!['dm', 'confectionery', 'design'].includes(department)) {
       return res.status(400).json({
         success: false,

@@ -8,11 +8,12 @@ const { getIO } = require('../config/socket');
 
 function parseDeliveryDate(dateStr) {
   if (!dateStr) return null;
-  
+  console.log('parseDeliveryDate', dateStr);
   const parts = dateStr.split('/');
   if (parts.length === 3) {
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
+
   return dateStr;
 }
 
