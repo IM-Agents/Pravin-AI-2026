@@ -8,13 +8,11 @@ const { getIO } = require('../config/socket');
 
 function parseDeliveryDate(dateStr) {
   if (!dateStr) return null;
-  console.log('parseDeliveryDate', dateStr);
+  
   const parts = dateStr.split('/');
   if (parts.length === 3) {
-    console.log('parseDeliveryDate', parts);
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
-
   return dateStr;
 }
 
@@ -27,11 +25,10 @@ function extractDeliveryInfo(payload) {
   let specificDeliveryTime = null;
   let deliveryDay = null;
   let deliveryLink = null;
-  console.log('extractDeliveryInfo', noteAttributes, lineItems);
+  let deliveryNote = null;
   
   for (const attr of noteAttributes) {
     const name = (attr.name || '').toLowerCase();
-    console.log('extractDeliveryInfo', name);
     if (name === 'delivery date') deliveryDate = attr.value;
     if (name === 'delivery time') deliveryTime = attr.value;
     if (name === 'specific delivery time') specificDeliveryTime = attr.value;
@@ -56,6 +53,7 @@ function extractDeliveryInfo(payload) {
     delivery_time: deliveryTime,
     specific_delivery_time: specificDeliveryTime,
     delivery_day: deliveryDay,
+    One: 123,
     delivery_link: deliveryLink
   };
 }
