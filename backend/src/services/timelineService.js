@@ -105,7 +105,6 @@ async function logPrintCancelled(orderId, department) {
 }
 
 async function logPrinterValidationFailed(orderId, department, reason) {
-  console.log('logPrinterValidationFailed', orderId, department, reason);
   await logEvent(
     orderId,
     'PRINTER_VALIDATION_FAILED',
@@ -116,7 +115,6 @@ async function logPrinterValidationFailed(orderId, department, reason) {
 }
 
 async function logManualPrintTriggered(orderId, department) {
-  console.log('logManualPrintTriggered', orderId, department);
   await logEvent(
     orderId,
     'MANUAL_PRINT_TRIGGERED',
