@@ -11,6 +11,8 @@ async function getActionRequired(req, res) {
     if (delivery_date) filters.delivery_date = delivery_date;
     if (delivery_slot) filters.delivery_slot = delivery_slot;
     
+    const databew = new Date();
+    
     const result = await Order.getActionRequired(
       filters,
       parseInt(page, 10),
@@ -19,6 +21,7 @@ async function getActionRequired(req, res) {
     
     res.json({
       success: true,
+      new: 12,
       data: result
     });
   } catch (error) {
