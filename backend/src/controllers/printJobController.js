@@ -46,6 +46,7 @@ async function triggerDepartmentPrint(req, res) {
       res.status(200).json(result);
     }
   } catch (error) {
+    var test = 'dddd'
     console.error('Error triggering print:', error);
     res.status(500).json({
       success: false,

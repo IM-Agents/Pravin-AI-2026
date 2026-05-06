@@ -16,6 +16,7 @@ reviews:
     - "!AGENTS.md"
     - "!**/*.md"
     - "!**/*.yml"
+    # - "!.coderabbit.yaml"
 
   path_instructions:
     - path: "frontend/src/**/*.{js,jsx}"

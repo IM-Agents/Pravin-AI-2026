@@ -5,13 +5,14 @@ concurrency:
   group: coderabbit-fix-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
-# submitted only — edited fires extra runs and can duplicate ClickUp posts without new inline threads.
+# Run on both submitted + edited review events.
+# CodeRabbit can complete follow-up passes as review edits (no new "submitted"), which otherwise skips ClickUp updates.
 on:
   pull_request_review:
-    types: [submitted]
+    types: [submitted, edited]
 
 jobs:
-  ai_fix:
+  coderabbit_auto_fix:
     runs-on: ubuntu-latest
     # Prepended to every ClickUp task comment (not stored in process.md).
     # General docs belong in README.md — process.md is only for automation keys (branch, clickup_task).
@@ -462,13 +463,10 @@ jobs:
           if [ "${IS_CODERABBIT_APPROVAL:-false}" = "true" ]; then
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           elif [ -n "${CLEAN_COMMENT:-}" ]; then
-            SUMMARY=$(cat <<EOF
-${CLICKUP_AGENT_PREFIX}
-**CodeRabbit Review Summary**
-
-$CLEAN_COMMENT
-EOF
-)
+            SUMMARY=$(printf '%s\n\n%s\n\n%s' \
+              "${CLICKUP_AGENT_PREFIX}" \
+              "**CodeRabbit Review Summary**" \
+              "$CLEAN_COMMENT")
           else
             SUMMARY="$CLICKUP_NO_IMPROVEMENTS_SUMMARY"
           fi

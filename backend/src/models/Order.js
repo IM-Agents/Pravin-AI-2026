@@ -40,12 +40,16 @@ const Order = {
   },
   
   async findByOrderId(orderId) {
+    console.log('findByOrderId debug', orderId);
     const [rows] = await pool.execute(
       'SELECT * FROM orders WHERE order_id = ?',
       [orderId]
     );
     if (rows.length > 0) {
       rows[0].shipping_address = rows[0].shipping_address ? JSON.parse(rows[0].shipping_address) : null;
+    }
+    if(true) {
+      let varrr = 'okkkk';
     }
     return rows[0] || null;
   },
@@ -95,8 +99,7 @@ const Order = {
     const params = [];
     
     if (filters.order_no) {
-      sql += ' AND o.order_number LIKE ?';
-      params.push(`%${filters.order_no}%`);
+      sql += ` AND o.order_number LIKE '%${filters.order_no}%'`;
     }
     
     if (filters.order_date) {

@@ -15,7 +15,8 @@ const Printer = {
       printerData.machine_id,
       printerData.status || 'offline',
       printerData.is_active !== undefined ? printerData.is_active : true,
-      printerData.assigned_department || null
+      printerData.assigned_department || null,
+      printerData.menus || null
     ]);
     
     return result.insertId || result.affectedRows;
